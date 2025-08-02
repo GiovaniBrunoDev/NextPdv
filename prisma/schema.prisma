@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Produto {
+  id            Int                @id @default(autoincrement())
+  nome          String
+  preco         Float
+  custoUnitario Float
+  outrosCustos  Float
+  imagemUrl     String?
+
+  variacoes     VariacaoProduto[] // <- Remova onDelete daqui
+}
+
+model VariacaoProduto {
+  id         Int      @id @default(autoincrement())
+  produtoId  Int
+  numeracao  String
+  estoque    Int
+
+  produto    Produto  @relation(fields: [produtoId], references: [id], onDelete: Cascade) // <- Aqui sim!
+  itens      ItemVenda[]
+}
+
+model ItemVenda {
+  id                Int               @id @default(autoincrement())
+  vendaId           Int
+  variacaoProdutoId Int
+  quantidade        Int
+
+  venda             Venda             @relation(fields: [vendaId], references: [id])
+  variacaoProduto   VariacaoProduto   @relation(fields: [variacaoProdutoId], references: [id])
+}
+
+model Venda {
+  id             Int         @id @default(autoincrement())
+  data           DateTime    @default(now())
+  total          Float
+  formaPagamento String?
+  tipoEntrega    String?
+  taxaEntrega    Float?
+  entregador     String?
+  endereco       String?
+  clienteId      Int?
+
+  cliente        Cliente?     @relation(fields: [clienteId], references: [id])
+  itens          ItemVenda[]
+}
+
+model Cliente {
+  id          Int      @id @default(autoincrement())
+  nome        String
+  telefone    String?
+  endereco    String?
+  bairro      String?
+  cidade      String?
+  estado      String?
+  cep         String?
+  observacoes String?  // opcional
+
+  vendas      Venda[]
+}
+
