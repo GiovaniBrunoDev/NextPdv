@@ -1,5 +1,5 @@
-const prisma = require("../config/db");
-
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 
 async function registrarVenda(req, res) {
   const {
