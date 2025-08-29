@@ -58,4 +58,4 @@ async function registrarVenda(req, res) {
 
 
 
-module.exports = { registrarVenda, deletarVenda };
+module.exports = { registrarVenda, deletarVenda, prisma };

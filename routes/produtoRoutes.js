@@ -11,6 +11,8 @@ router.patch('/variacoes/:id', produtoController.atualizarEstoqueVariacao);
 router.delete("/variacoes/:id", produtoController.deletarVariacao);
 router.post('/:id/variacoes', produtoController.adicionarVariacao);
 router.post('/upload', produtoController.uploadImagem, produtoController.fazerUploadImagem);
+router.get('/buscar', produtoController.buscarProdutos);
+
 
 
 module.exports = router;

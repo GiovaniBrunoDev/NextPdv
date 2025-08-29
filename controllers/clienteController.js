@@ -101,4 +101,5 @@ module.exports = {
   buscarCliente,
   atualizarCliente,
   deletarCliente,
+  prisma,
 };

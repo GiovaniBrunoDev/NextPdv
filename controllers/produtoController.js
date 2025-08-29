@@ -4,7 +4,40 @@
   const path = require("path");
   const fs = require("fs");
 
-  
+
+// Buscar produtos por nome (inteligente)
+async function buscarProdutos(req, res) {
+  const { q } = req.query; // texto da busca
+
+  try {
+    const produtos = await prisma.produto.findMany({
+      where: {
+        nome: {
+          contains: q || "", // busca parcial
+          mode: "insensitive", // ignora maiúsculas/minúsculas
+        },
+      },
+      include: {
+        variacoes: true,
+      },
+    });
+
+    const produtosComImagem = produtos.map((p) => ({
+      ...p,
+      imagemUrlCompleta: p.imagemUrl
+        ? `${req.protocol}://${req.get("host")}${p.imagemUrl}`
+        : null,
+    }));
+
+    res.json(produtosComImagem);
+  } catch (error) {
+    console.error("Erro ao buscar produtos:", error);
+    res
+      .status(500)
+      .json({ error: "Erro ao buscar produtos", detalhes: error.message });
+  }
+}
+
 
  // Buscar por ID
   async function buscarProduto(req, res) {
@@ -189,6 +222,7 @@
   module.exports = {
     listarProdutos,
     buscarProduto,
+    buscarProdutos,
     criarProduto,
     atualizarProduto,
     deletarProduto,
@@ -196,5 +230,6 @@
     deletarVariacao,
     adicionarVariacao,
     uploadImagem,         // middleware do multer
-    fazerUploadImagem     // handler da imagem
+    fazerUploadImagem,     // handler da imagem
+    prisma
   };
