@@ -25,7 +25,7 @@ app.get("/", (req, res) => {
 
 // PDV
 app.use('/produtos', produtoRoutes);
-app.use('/vendas', vendaRoutes); 
+app.use('/vendas', vendaRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/metas", metasRoutes);
 app.use('/clientes', clienteRoutes);
@@ -36,24 +36,23 @@ const catalogoRouter = express.Router();
 // GET /catalogo/produtos?numeracao=NN
 catalogoRouter.get('/produtos', async (req, res) => {
   try {
-    const numeracao = req.query.numeracao || null; 
+    const numeracao = req.query.numeracao || null;
 
     const produtos = await prisma.produto.findMany({
       where: numeracao
         ? {
-            variacoes: {
-              some: {
-                numeracao,
-                estoque: { gt: 0 },
-              },
+          variacoes: {
+            some: {
+              numeracao,
+              estoque: { gt: 0 },
             },
-          }
+          },
+        }
         : {},
       select: {
         id: true,
         nome: true,
         preco: true,
-        precoAntigo: true,
         imagemUrl: true,
         variacoes: {
           select: {
