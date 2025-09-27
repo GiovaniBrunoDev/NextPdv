@@ -36,7 +36,7 @@ const catalogoRouter = express.Router();
 // GET /catalogo/produtos?numeracao=NN
 catalogoRouter.get('/produtos', async (req, res) => {
   try {
-    const numeracao = req.query.numeracao ? Number(req.query.numeracao) : null;
+    const numeracao = req.query.numeracao || null; 
 
     const produtos = await prisma.produto.findMany({
       where: numeracao
