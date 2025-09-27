@@ -61,3 +61,14 @@ model Cliente {
   observacoes String?
   vendas      Venda[]
 }
+
+model Meta {
+  id          Int      @id @default(autoincrement())
+  titulo      String
+  descricao   String?
+  valorMeta   Float
+  tipo        String   // "vendas", "lucro", "produtosVendidos", "clientes"
+  periodo     String   // "dia", "semana", "mes"
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+}
