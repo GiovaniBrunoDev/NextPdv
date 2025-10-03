@@ -36,15 +36,17 @@ const catalogoRouter = express.Router();
 // GET /catalogo/produtos?numeracao=NN
 catalogoRouter.get('/produtos', async (req, res) => {
   try {
-    const numeracao = req.query.numeracao || null;
+    const numeracao = req.query.numeracao
+      ? Number(req.query.numeracao)
+      : null;
 
     const produtos = await prisma.produto.findMany({
       where: numeracao
         ? {
-            variacoes: {
-              some: { numeracao }, // 🔥 agora não filtra por estoque
-            },
-          }
+          variacoes: {
+            some: { numeracao }, // agora numeracao é Int
+          },
+        }
         : {},
       select: {
         id: true,
@@ -64,10 +66,11 @@ catalogoRouter.get('/produtos', async (req, res) => {
 
     res.json(produtos);
   } catch (err) {
-    console.error(err);
+    console.error("Erro ao buscar produtos:", err);
     res.status(500).json({ error: "Erro ao buscar produtos" });
   }
 });
+
 
 
 // GET /catalogo/produto/:id
