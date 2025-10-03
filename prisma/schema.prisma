@@ -14,8 +14,11 @@ model Produto {
   custoUnitario Float
   outrosCustos  Float
   imagemUrl     String?
+  videoUrl      String?     // 🔥 URL do vídeo do produto
+  gifUrl        String?     // 🔥 URL do gif preview
   variacoes     VariacaoProduto[]
 }
+
 
 model VariacaoProduto {
   id        Int         @id @default(autoincrement())

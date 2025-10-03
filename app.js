@@ -53,6 +53,8 @@ catalogoRouter.get('/produtos', async (req, res) => {
         nome: true,
         preco: true,
         imagemUrl: true,
+        videoUrl: true,  // 🔥 agora busca do banco
+        gifUrl: true,    // 🔥 idem
         variacoes: {
           select: {
             id: true,
