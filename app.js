@@ -41,18 +41,16 @@ catalogoRouter.get('/produtos', async (req, res) => {
     const produtos = await prisma.produto.findMany({
       where: numeracao
         ? {
-          variacoes: {
-            some: {
-              numeracao,
-              estoque: { gt: 0 },
+            variacoes: {
+              some: { numeracao }, // 🔥 agora não filtra por estoque
             },
-          },
-        }
+          }
         : {},
       select: {
         id: true,
         nome: true,
         preco: true,
+        precoAntigo: true,
         imagemUrl: true,
         variacoes: {
           select: {
@@ -70,6 +68,7 @@ catalogoRouter.get('/produtos', async (req, res) => {
     res.status(500).json({ error: "Erro ao buscar produtos" });
   }
 });
+
 
 // GET /catalogo/produto/:id
 catalogoRouter.get('/produto/:id', async (req, res) => {
