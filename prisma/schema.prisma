@@ -87,6 +87,9 @@ model Pedido {
   tipoEntrega    String?
   endereco       String?
   observacoes    String?
+  entregador     String?
+  formaPagamento String?
+  taxaEntrega    Float?        @default(0)
   total          Float         @default(0)
   status         String        @default("reservado")
   itens          ItemPedido[]
@@ -94,13 +97,14 @@ model Pedido {
 
 
 model ItemPedido {
-  id               Int              @id @default(autoincrement())
-  pedidoId         Int
+  id                Int              @id @default(autoincrement())
+  pedidoId          Int
   variacaoProdutoId Int
-  quantidade       Int
-  precoUnitario    Float
-  subtotal         Float
-  pedido           Pedido           @relation(fields: [pedidoId], references: [id])
-  variacaoProduto  VariacaoProduto  @relation(fields: [variacaoProdutoId], references: [id])
+  quantidade        Int
+  precoUnitario     Float
+  subtotal          Float
+  pedido            Pedido           @relation(fields: [pedidoId], references: [id])
+  variacaoProduto   VariacaoProduto  @relation(fields: [variacaoProdutoId], references: [id])
 }
+
 
