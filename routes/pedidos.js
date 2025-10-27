@@ -8,6 +8,7 @@ const prisma = new PrismaClient();
  */
 router.post("/", async (req, res) => {
   try {
+    console.log("REQ BODY:", req.body); // 🔹 Adicione isso
     const {
       clienteId,
       observacoes,
@@ -16,6 +17,7 @@ router.post("/", async (req, res) => {
       tipoEntrega, // "entrega" ou "retirada"
       endereco,
       produtos, // [{ variacaoProdutoId, quantidade, precoUnitario }]
+      
     } = req.body;
 
     if (!produtos || produtos.length === 0)
