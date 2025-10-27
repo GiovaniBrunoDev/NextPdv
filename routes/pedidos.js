@@ -34,6 +34,11 @@ router.post("/", async (req, res) => {
           error: `Estoque insuficiente para o produto ${variacao.produtoId} (numeração ${variacao.numeracao}).`,
         });
       }
+
+      // Garante que precoUnitario nunca seja undefined
+      if (item.precoUnitario === undefined || item.precoUnitario === null) {
+        item.precoUnitario = variacao.produto.preco; // pega o preço do produto padrão
+      }
     }
 
     const novaDataEntrega = dataEntrega ? new Date(dataEntrega) : null;
