@@ -14,19 +14,19 @@ model Produto {
   custoUnitario Float
   outrosCustos  Float
   imagemUrl     String?
-  videoUrl      String?     // 🔥 URL do vídeo do produto
-  gifUrl        String?     // 🔥 URL do gif preview
+  videoUrl      String?
+  gifUrl        String?
   variacoes     VariacaoProduto[]
 }
 
-
 model VariacaoProduto {
-  id        Int         @id @default(autoincrement())
-  produtoId Int
-  numeracao String
-  estoque   Int
-  itens     ItemVenda[]
-  produto   Produto     @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  id          Int          @id @default(autoincrement())
+  produtoId   Int
+  numeracao   String
+  estoque     Int
+  itens       ItemVenda[]
+  itensPedido ItemPedido[] // 🟢 relação adicionada para pedidos
+  produto     Produto      @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 }
 
 model ItemVenda {
@@ -53,7 +53,7 @@ model Venda {
 }
 
 model Cliente {
-  id          Int     @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   nome        String
   telefone    String?
   endereco    String?
@@ -63,15 +63,40 @@ model Cliente {
   cep         String?
   observacoes String?
   vendas      Venda[]
+  pedidos     Pedido[] // 🟢 relação adicionada para pedidos
 }
 
 model Meta {
-  id          Int      @id @default(autoincrement())
-  titulo      String
-  descricao   String?
-  valorMeta   Float
-  tipo        String   // "vendas", "lucro", "produtosVendidos", "clientes"
-  periodo     String   // "dia", "semana", "mes"
-  criadoEm    DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  titulo       String
+  descricao    String?
+  valorMeta    Float
+  tipo         String // "vendas", "lucro", etc.
+  periodo      String // "dia", "semana", "mes"
+  criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
+}
+
+model Pedido {
+  id          Int          @id @default(autoincrement())
+  codigo      String       @default(uuid())
+  clienteId   Int?
+  cliente     Cliente?     @relation(fields: [clienteId], references: [id])
+  dataCriacao DateTime     @default(now())
+  dataEntrega DateTime?
+  status      String       @default("reservado") // reservado, confirmado, cancelado, entregue
+  observacoes String?
+  total       Float        @default(0)
+  itens       ItemPedido[]
+}
+
+model ItemPedido {
+  id                Int             @id @default(autoincrement())
+  pedidoId          Int
+  pedido            Pedido          @relation(fields: [pedidoId], references: [id])
+  variacaoProdutoId Int
+  variacaoProduto   VariacaoProduto @relation(fields: [variacaoProdutoId], references: [id])
+  quantidade        Int
+  precoUnitario     Float
+  subtotal          Float
 }
