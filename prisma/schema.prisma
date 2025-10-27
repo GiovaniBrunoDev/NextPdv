@@ -78,25 +78,29 @@ model Meta {
 }
 
 model Pedido {
-  id          Int          @id @default(autoincrement())
-  codigo      String       @default(uuid())
-  clienteId   Int?
-  cliente     Cliente?     @relation(fields: [clienteId], references: [id])
-  dataCriacao DateTime     @default(now())
-  dataEntrega DateTime?
-  status      String       @default("reservado") // reservado, confirmado, cancelado, entregue
-  observacoes String?
-  total       Float        @default(0)
-  itens       ItemPedido[]
+  id             Int           @id @default(autoincrement())
+  clienteId      Int?
+  cliente        Cliente?      @relation(fields: [clienteId], references: [id])
+  dataCriacao    DateTime      @default(now())
+  dataEntrega    DateTime?
+  horarioEntrega String?
+  tipoEntrega    String?
+  endereco       String?
+  observacoes    String?
+  total          Float         @default(0)
+  status         String        @default("reservado")
+  itens          ItemPedido[]
 }
 
+
 model ItemPedido {
-  id                Int             @id @default(autoincrement())
-  pedidoId          Int
-  pedido            Pedido          @relation(fields: [pedidoId], references: [id])
+  id               Int              @id @default(autoincrement())
+  pedidoId         Int
   variacaoProdutoId Int
-  variacaoProduto   VariacaoProduto @relation(fields: [variacaoProdutoId], references: [id])
-  quantidade        Int
-  precoUnitario     Float
-  subtotal          Float
+  quantidade       Int
+  precoUnitario    Float
+  subtotal         Float
+  pedido           Pedido           @relation(fields: [pedidoId], references: [id])
+  variacaoProduto  VariacaoProduto  @relation(fields: [variacaoProdutoId], references: [id])
 }
+

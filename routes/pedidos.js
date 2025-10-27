@@ -3,127 +3,200 @@ const router = express.Router();
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
-// Criar novo pedido (reserva)
+/**
+ * 🟢 Criar pedido (imediato ou agendado)
+ */
 router.post("/", async (req, res) => {
   try {
-    const { clienteId, observacoes, itens, dataEntrega } = req.body;
+    const {
+      clienteId,
+      observacoes,
+      dataEntrega,
+      horarioEntrega,
+      tipoEntrega, // "entrega" ou "retirada"
+      endereco,
+      produtos, // [{ variacaoProdutoId, quantidade, precoUnitario }]
+    } = req.body;
 
-    if (!itens || itens.length === 0) {
-      return res.status(400).json({ error: "Nenhum item informado." });
-    }
+    if (!produtos || produtos.length === 0)
+      return res.status(400).json({ error: "Nenhum produto informado." });
 
-    // Calcula total e reserva estoque
-    let total = 0;
-
-    for (const item of itens) {
+    // Valida o estoque antes de criar o pedido
+    for (const item of produtos) {
       const variacao = await prisma.variacaoProduto.findUnique({
         where: { id: item.variacaoProdutoId },
       });
-
       if (!variacao) {
-        return res.status(400).json({ error: `Variação ${item.variacaoProdutoId} não encontrada.` });
+        return res.status(404).json({ error: `Variação ${item.variacaoProdutoId} não encontrada.` });
       }
-
       if (variacao.estoque < item.quantidade) {
-        return res.status(400).json({ error: `Estoque insuficiente para ${variacao.numeracao}.` });
+        return res.status(400).json({
+          error: `Estoque insuficiente para o produto ${variacao.produtoId} (numeração ${variacao.numeracao}).`,
+        });
       }
-
-      total += item.quantidade * item.precoUnitario;
-
-      // Reserva no estoque
-      await prisma.variacaoProduto.update({
-        where: { id: item.variacaoProdutoId },
-        data: {
-          estoque: { decrement: item.quantidade },
-        },
-      });
     }
 
-    const pedido = await prisma.pedido.create({
+    const novaDataEntrega = dataEntrega ? new Date(dataEntrega) : null;
+
+    const novoPedido = await prisma.pedido.create({
       data: {
         clienteId,
         observacoes,
-        dataEntrega: dataEntrega ? new Date(dataEntrega) : null,
-        total,
-        status: "reservado",
-        itens: {
-          create: itens.map((i) => ({
-            variacaoProdutoId: i.variacaoProdutoId,
-            quantidade: i.quantidade,
-            precoUnitario: i.precoUnitario,
-            subtotal: i.quantidade * i.precoUnitario,
-          })),
-        },
-      },
-      include: {
-        cliente: true,
-        itens: { include: { variacaoProduto: { include: { produto: true } } } },
+        dataEntrega: novaDataEntrega,
+        horarioEntrega,
+        tipoEntrega,
+        endereco,
+        status: novaDataEntrega ? "agendado" : "reservado",
       },
     });
 
-    res.status(201).json(pedido);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Erro ao criar pedido." });
+    let total = 0;
+    for (const item of produtos) {
+      const subtotal = item.quantidade * item.precoUnitario;
+      total += subtotal;
+
+      await prisma.itemPedido.create({
+        data: {
+          pedidoId: novoPedido.id,
+          variacaoProdutoId: item.variacaoProdutoId,
+          quantidade: item.quantidade,
+          precoUnitario: item.precoUnitario,
+          subtotal,
+        },
+      });
+
+      // Reserva o estoque
+      await prisma.variacaoProduto.update({
+        where: { id: item.variacaoProdutoId },
+        data: { estoque: { decrement: item.quantidade } },
+      });
+    }
+
+    const pedidoFinal = await prisma.pedido.update({
+      where: { id: novoPedido.id },
+      data: { total },
+      include: {
+        cliente: true,
+        itens: {
+          include: {
+            variacaoProduto: {
+              include: { produto: true },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(201).json({
+      message: "Pedido criado com sucesso!",
+      pedido: pedidoFinal,
+    });
+  } catch (error) {
+    console.error("Erro ao criar pedido:", error);
+    res.status(500).json({ error: "Erro interno ao criar pedido." });
   }
 });
 
-// Listar todos os pedidos
+/**
+ * 🔄 Atualizar status (reservado → confirmado → entregue / cancelado)
+ */
+router.put("/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const pedido = await prisma.pedido.findUnique({
+      where: { id: Number(id) },
+      include: { itens: true },
+    });
+
+    if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
+
+    // 🔁 Se cancelar → devolve estoque
+    if (status === "cancelado" && pedido.status !== "cancelado") {
+      for (const item of pedido.itens) {
+        await prisma.variacaoProduto.update({
+          where: { id: item.variacaoProdutoId },
+          data: { estoque: { increment: item.quantidade } },
+        });
+      }
+    }
+
+    const atualizado = await prisma.pedido.update({
+      where: { id: Number(id) },
+      data: { status },
+      include: {
+        cliente: true,
+        itens: {
+          include: { variacaoProduto: { include: { produto: true } } },
+        },
+      },
+    });
+
+    res.json({
+      message: `Status do pedido atualizado para ${status}.`,
+      pedido: atualizado,
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar status:", error);
+    res.status(500).json({ error: "Erro ao atualizar status do pedido." });
+  }
+});
+
+/**
+ * 🔵 Listar todos os pedidos
+ */
 router.get("/", async (req, res) => {
   try {
     const pedidos = await prisma.pedido.findMany({
       orderBy: { dataCriacao: "desc" },
       include: {
         cliente: true,
-        itens: { include: { variacaoProduto: { include: { produto: true } } } },
+        itens: {
+          include: {
+            variacaoProduto: {
+              include: { produto: true },
+            },
+          },
+        },
       },
     });
+
     res.json(pedidos);
-  } catch (err) {
+  } catch (error) {
+    console.error("Erro ao listar pedidos:", error);
     res.status(500).json({ error: "Erro ao listar pedidos." });
   }
 });
 
-// Confirmar pedido
-router.patch("/:id/confirmar", async (req, res) => {
+/**
+ * 🔔 Buscar pedidos agendados para HOJE
+ */
+router.get("/hoje", async (req, res) => {
   try {
-    const pedido = await prisma.pedido.update({
-      where: { id: Number(req.params.id) },
-      data: { status: "confirmado" },
-    });
-    res.json(pedido);
-  } catch (err) {
-    res.status(500).json({ error: "Erro ao confirmar pedido." });
-  }
-});
+    const agora = new Date();
+    const inicio = new Date(agora.setHours(0, 0, 0, 0));
+    const fim = new Date(agora.setHours(23, 59, 59, 999));
 
-// Cancelar pedido (repor estoque)
-router.patch("/:id/cancelar", async (req, res) => {
-  try {
-    const pedido = await prisma.pedido.findUnique({
-      where: { id: Number(req.params.id) },
-      include: { itens: true },
-    });
-
-    if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
-
-    // Devolve o estoque dos itens
-    for (const item of pedido.itens) {
-      await prisma.variacaoProduto.update({
-        where: { id: item.variacaoProdutoId },
-        data: { estoque: { increment: item.quantidade } },
-      });
-    }
-
-    const atualizado = await prisma.pedido.update({
-      where: { id: pedido.id },
-      data: { status: "cancelado" },
+    const pedidosHoje = await prisma.pedido.findMany({
+      where: {
+        dataEntrega: {
+          gte: inicio,
+          lte: fim,
+        },
+        status: { not: "cancelado" },
+      },
+      include: {
+        cliente: true,
+        itens: { include: { variacaoProduto: { include: { produto: true } } } },
+      },
+      orderBy: { horarioEntrega: "asc" },
     });
 
-    res.json({ message: "Pedido cancelado e estoque restaurado.", atualizado });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Erro ao cancelar pedido." });
+    res.json(pedidosHoje);
+  } catch (error) {
+    console.error("Erro ao buscar pedidos de hoje:", error);
+    res.status(500).json({ error: "Erro ao buscar pedidos do dia." });
   }
 });
 
