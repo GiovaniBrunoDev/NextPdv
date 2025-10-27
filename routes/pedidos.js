@@ -8,17 +8,20 @@ const prisma = new PrismaClient();
  */
 router.post("/", async (req, res) => {
   try {
-    console.log("REQ BODY:", req.body); // 🔹 Adicione isso
+    console.log("REQ BODY:", req.body);
+
     const {
       clienteId,
       observacoes,
       dataEntrega,
       horarioEntrega,
-      tipoEntrega, // "entrega" ou "retirada"
+      tipoEntrega,
       endereco,
-      produtos, // [{ variacaoProdutoId, quantidade, precoUnitario }]
-      
+      produtos: produtosDoBody,
+      itens: itensDoBody, // aceita ambos
     } = req.body;
+
+    const produtos = produtosDoBody || itensDoBody;
 
     if (!produtos || produtos.length === 0)
       return res.status(400).json({ error: "Nenhum produto informado." });
