@@ -17,8 +17,11 @@ router.post("/", async (req, res) => {
       horarioEntrega,
       tipoEntrega,
       endereco,
+      entregador,
+      formaPagamento,
+      taxaEntrega,
       produtos: produtosDoBody,
-      itens: itensDoBody, // aceita ambos
+      itens: itensDoBody,
     } = req.body;
 
     const produtos = produtosDoBody || itensDoBody;
@@ -26,23 +29,24 @@ router.post("/", async (req, res) => {
     if (!produtos || produtos.length === 0)
       return res.status(400).json({ error: "Nenhum produto informado." });
 
-    // Valida o estoque antes de criar o pedido
     for (const item of produtos) {
       const variacao = await prisma.variacaoProduto.findUnique({
         where: { id: item.variacaoProdutoId },
+        include: { produto: true },
       });
-      if (!variacao) {
-        return res.status(404).json({ error: `Variação ${item.variacaoProdutoId} não encontrada.` });
-      }
-      if (variacao.estoque < item.quantidade) {
-        return res.status(400).json({
-          error: `Estoque insuficiente para o produto ${variacao.produtoId} (numeração ${variacao.numeracao}).`,
-        });
-      }
 
-      // Garante que precoUnitario nunca seja undefined
+      if (!variacao)
+        return res.status(404).json({
+          error: `Variação ${item.variacaoProdutoId} não encontrada.`,
+        });
+
+      if (variacao.estoque < item.quantidade)
+        return res.status(400).json({
+          error: `Estoque insuficiente para o produto ${variacao.produto.nome} (${variacao.numeracao}).`,
+        });
+
       if (item.precoUnitario === undefined || item.precoUnitario === null) {
-        item.precoUnitario = variacao.produto.preco; // pega o preço do produto padrão
+        item.precoUnitario = variacao.produto.preco;
       }
     }
 
@@ -56,6 +60,9 @@ router.post("/", async (req, res) => {
         horarioEntrega,
         tipoEntrega,
         endereco,
+        entregador,
+        formaPagamento,
+        taxaEntrega,
         status: novaDataEntrega ? "agendado" : "reservado",
       },
     });
@@ -75,7 +82,6 @@ router.post("/", async (req, res) => {
         },
       });
 
-      // Reserva o estoque
       await prisma.variacaoProduto.update({
         where: { id: item.variacaoProdutoId },
         data: { estoque: { decrement: item.quantidade } },
@@ -87,13 +93,7 @@ router.post("/", async (req, res) => {
       data: { total },
       include: {
         cliente: true,
-        itens: {
-          include: {
-            variacaoProduto: {
-              include: { produto: true },
-            },
-          },
-        },
+        itens: { include: { variacaoProduto: { include: { produto: true } } } },
       },
     });
 
@@ -108,7 +108,7 @@ router.post("/", async (req, res) => {
 });
 
 /**
- * 🔄 Atualizar status (reservado → confirmado → entregue / cancelado)
+ * 🔄 Atualizar status do pedido
  */
 router.put("/:id/status", async (req, res) => {
   try {
@@ -122,7 +122,6 @@ router.put("/:id/status", async (req, res) => {
 
     if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
 
-    // 🔁 Se cancelar → devolve estoque
     if (status === "cancelado" && pedido.status !== "cancelado") {
       for (const item of pedido.itens) {
         await prisma.variacaoProduto.update({
@@ -137,9 +136,7 @@ router.put("/:id/status", async (req, res) => {
       data: { status },
       include: {
         cliente: true,
-        itens: {
-          include: { variacaoProduto: { include: { produto: true } } },
-        },
+        itens: { include: { variacaoProduto: { include: { produto: true } } } },
       },
     });
 
@@ -154,7 +151,7 @@ router.put("/:id/status", async (req, res) => {
 });
 
 /**
- * 🔵 Listar todos os pedidos
+ * 🔵 Listar pedidos
  */
 router.get("/", async (req, res) => {
   try {
@@ -162,13 +159,7 @@ router.get("/", async (req, res) => {
       orderBy: { dataCriacao: "desc" },
       include: {
         cliente: true,
-        itens: {
-          include: {
-            variacaoProduto: {
-              include: { produto: true },
-            },
-          },
-        },
+        itens: { include: { variacaoProduto: { include: { produto: true } } } },
       },
     });
 
@@ -190,10 +181,7 @@ router.get("/hoje", async (req, res) => {
 
     const pedidosHoje = await prisma.pedido.findMany({
       where: {
-        dataEntrega: {
-          gte: inicio,
-          lte: fim,
-        },
+        dataEntrega: { gte: inicio, lte: fim },
         status: { not: "cancelado" },
       },
       include: {
@@ -207,6 +195,57 @@ router.get("/hoje", async (req, res) => {
   } catch (error) {
     console.error("Erro ao buscar pedidos de hoje:", error);
     res.status(500).json({ error: "Erro ao buscar pedidos do dia." });
+  }
+});
+
+/**
+ * ✅ Confirmar pedido → converter em venda e remover o pedido
+ */
+router.post("/:id/confirmar", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const pedido = await prisma.pedido.findUnique({
+      where: { id: Number(id) },
+      include: {
+        cliente: true,
+        itens: { include: { variacaoProduto: true } },
+      },
+    });
+
+    if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
+
+    const novaVenda = await prisma.venda.create({
+      data: {
+        clienteId: pedido.clienteId,
+        tipoEntrega: pedido.tipoEntrega,
+        taxaEntrega: pedido.taxaEntrega,
+        entregador: pedido.entregador,
+        formaPagamento: pedido.formaPagamento,
+        endereco: pedido.endereco,
+        total: pedido.total,
+        itens: {
+          create: pedido.itens.map((item) => ({
+            variacaoProdutoId: item.variacaoProdutoId,
+            quantidade: item.quantidade,
+            precoUnitario: item.precoUnitario,
+            subtotal: item.subtotal,
+          })),
+        },
+      },
+    });
+
+    // Exclui o pedido original
+    await prisma.itemPedido.deleteMany({ where: { pedidoId: pedido.id } });
+    await prisma.pedido.delete({ where: { id: pedido.id } });
+
+    res.json({
+      message: "Pedido confirmado e convertido em venda com sucesso!",
+      venda: novaVenda,
+    });
+  } catch (error) {
+    console.error("Erro ao confirmar pedido:", error);
+    res.status(500).json({ error: "Erro ao confirmar pedido." });
   }
 });
 
