@@ -8,8 +8,6 @@ const prisma = new PrismaClient();
  */
 router.post("/", async (req, res) => {
   try {
-    console.log("REQ BODY:", req.body);
-
     const {
       clienteId,
       observacoes,
@@ -25,11 +23,10 @@ router.post("/", async (req, res) => {
     } = req.body;
 
     const produtos = produtosDoBody || itensDoBody;
-
-    if (!produtos || produtos.length === 0)
+    if (!produtos?.length)
       return res.status(400).json({ error: "Nenhum produto informado." });
 
-    // Validar estoque e garantir precoUnitario
+    // Validar estoque e garantir preço unitário
     for (const item of produtos) {
       const variacao = await prisma.variacaoProduto.findUnique({
         where: { id: item.variacaoProdutoId },
@@ -43,17 +40,14 @@ router.post("/", async (req, res) => {
 
       if (variacao.estoque < item.quantidade)
         return res.status(400).json({
-          error: `Estoque insuficiente para o produto ${variacao.produto.nome} (${variacao.numeracao}).`,
+          error: `Estoque insuficiente para ${variacao.produto.nome} (${variacao.numeracao}).`,
         });
 
-      if (item.precoUnitario === undefined || item.precoUnitario === null) {
-        item.precoUnitario = variacao.produto.preco;
-      }
+      item.precoUnitario = item.precoUnitario ?? variacao.produto.preco;
     }
 
     const novaDataEntrega = dataEntrega ? new Date(dataEntrega) : null;
 
-    // Criar pedido usando nested create/connect
     const novoPedido = await prisma.pedido.create({
       data: {
         cliente: clienteId ? { connect: { id: clienteId } } : undefined,
@@ -89,8 +83,12 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Recalcular total do pedido
-    const total = produtos.reduce((acc, item) => acc + item.quantidade * item.precoUnitario, 0);
+    // Calcular total
+    const total = produtos.reduce(
+      (acc, i) => acc + i.quantidade * i.precoUnitario,
+      0
+    );
+
     const pedidoFinal = await prisma.pedido.update({
       where: { id: novoPedido.id },
       data: { total },
@@ -100,10 +98,7 @@ router.post("/", async (req, res) => {
       },
     });
 
-    res.status(201).json({
-      message: "Pedido criado com sucesso!",
-      pedido: pedidoFinal,
-    });
+    res.status(201).json({ message: "Pedido criado com sucesso!", pedido: pedidoFinal });
   } catch (error) {
     console.error("Erro ao criar pedido:", error);
     res.status(500).json({ error: "Erro interno ao criar pedido." });
@@ -111,7 +106,7 @@ router.post("/", async (req, res) => {
 });
 
 /**
- * 🔄 Atualizar status do pedido
+ * 🔄 Atualizar status
  */
 router.put("/:id/status", async (req, res) => {
   try {
@@ -122,10 +117,10 @@ router.put("/:id/status", async (req, res) => {
       where: { id: Number(id) },
       include: { itens: true },
     });
-
     if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
 
     if (status === "cancelado" && pedido.status !== "cancelado") {
+      // Repor estoque
       for (const item of pedido.itens) {
         await prisma.variacaoProduto.update({
           where: { id: item.variacaoProdutoId },
@@ -143,10 +138,7 @@ router.put("/:id/status", async (req, res) => {
       },
     });
 
-    res.json({
-      message: `Status do pedido atualizado para ${status}.`,
-      pedido: atualizado,
-    });
+    res.json({ message: `Status atualizado para ${status}.`, pedido: atualizado });
   } catch (error) {
     console.error("Erro ao atualizar status:", error);
     res.status(500).json({ error: "Erro ao atualizar status do pedido." });
@@ -154,18 +146,20 @@ router.put("/:id/status", async (req, res) => {
 });
 
 /**
- * 🔵 Listar pedidos
+ * 🔵 Listar pedidos (ativos)
  */
 router.get("/", async (req, res) => {
   try {
     const pedidos = await prisma.pedido.findMany({
+      where: {
+        status: { notIn: ["entregue", "cancelado"] },
+      },
       orderBy: { dataCriacao: "desc" },
       include: {
         cliente: true,
         itens: { include: { variacaoProduto: { include: { produto: true } } } },
       },
     });
-
     res.json(pedidos);
   } catch (error) {
     console.error("Erro ao listar pedidos:", error);
@@ -174,7 +168,7 @@ router.get("/", async (req, res) => {
 });
 
 /**
- * 🔔 Buscar pedidos agendados para HOJE
+ * 🔔 Pedidos de hoje
  */
 router.get("/hoje", async (req, res) => {
   try {
@@ -185,7 +179,7 @@ router.get("/hoje", async (req, res) => {
     const pedidosHoje = await prisma.pedido.findMany({
       where: {
         dataEntrega: { gte: inicio, lte: fim },
-        status: { not: "cancelado" },
+        status: { notIn: ["cancelado", "entregue"] },
       },
       include: {
         cliente: true,
@@ -218,8 +212,7 @@ router.post("/:id/confirmar", async (req, res) => {
 
     if (!pedido) return res.status(404).json({ error: "Pedido não encontrado." });
 
-    // Criar a venda com nested create para itens
-    const novaVenda = await prisma.venda.create({
+    const venda = await prisma.venda.create({
       data: {
         cliente: pedido.clienteId ? { connect: { id: pedido.clienteId } } : undefined,
         tipoEntrega: pedido.tipoEntrega,
@@ -237,20 +230,13 @@ router.post("/:id/confirmar", async (req, res) => {
           })),
         },
       },
-      include: {
-        cliente: true,
-        itens: { include: { variacaoProduto: { include: { produto: true } } } },
-      },
     });
 
-    // Excluir o pedido original e seus itens (opcional, se quiser manter histórico, pode comentar)
+    // Excluir pedido e itens
     await prisma.itemPedido.deleteMany({ where: { pedidoId: pedido.id } });
     await prisma.pedido.delete({ where: { id: pedido.id } });
 
-    res.json({
-      message: "Pedido confirmado e convertido em venda com sucesso!",
-      venda: novaVenda,
-    });
+    res.json({ message: "Pedido convertido em venda com sucesso!", venda });
   } catch (error) {
     console.error("Erro ao confirmar pedido:", error);
     res.status(500).json({ error: "Erro ao confirmar pedido." });
