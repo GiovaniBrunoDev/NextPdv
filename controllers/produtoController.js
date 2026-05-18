@@ -121,12 +121,21 @@ async function listarProdutos(req, res) {
 // Atualizar produto
 async function atualizarProduto(req, res) {
   const { id } = req.params;
-  const { nome, codigo, preco, numeracao, estoque, imagemUrl } = req.body;
+  const {
+    nome,
+    codigo,
+    preco,
+    numeracao,
+    estoque,
+    imagemUrl,
+    videoUrl,
+    gifUrl,
+  } = req.body;
 
   try {
     const atualizado = await prisma.produto.update({
       where: { id: Number(id) },
-      data: { nome, codigo, preco, numeracao, estoque, imagemUrl }
+      data: { nome, codigo, preco, numeracao, estoque, imagemUrl, videoUrl, gifUrl }
     });
     res.json(atualizado);
   } catch (error) {

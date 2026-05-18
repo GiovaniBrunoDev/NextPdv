@@ -88,6 +88,8 @@ catalogoRouter.get('/produto/:id', async (req, res) => {
         preco: true,
         precoAntigo: true,
         imagemUrl: true,
+        videoUrl: true,
+        gifUrl: true,
         variacoes: {
           select: {
             id: true,

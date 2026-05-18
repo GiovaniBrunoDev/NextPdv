@@ -71,8 +71,6 @@ router.post("/upload-video", upload.single("video"), async (req, res) => {
                 .run();
         });
 
-
-
         // 📤 4. Upload GIF pro R2
         const gifBuffer = fs.readFileSync(tempGifPath);
 
