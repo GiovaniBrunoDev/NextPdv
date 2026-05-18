@@ -90,7 +90,7 @@ router.post("/upload-video", upload.single("video"), async (req, res) => {
         const videoUrl = `${process.env.R2_PUBLIC_URL}/${videoKey}`;
         const gifUrl = `${process.env.R2_PUBLIC_URL}/${gifKey}`;
 
-        res.json({ videoUrl, gifUrl });
+        res.json({ videoUrl, gifUrl, url: videoUrl });
 
     } catch (err) {
         console.error(err);
