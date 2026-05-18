@@ -32,10 +32,6 @@ router.post("/upload-video", upload.single("video"), async (req, res) => {
 
         const fileName = `catalogo/${slug}-${uuidv4()}.mp4`;
 
-        console.log("ENV DEBUG:");
-console.log("R2_BUCKET:", process.env.R2_BUCKET);
-console.log("R2_ENDPOINT:", process.env.R2_ENDPOINT);
-
         await r2.send(
             
             new PutObjectCommand({
