@@ -14,6 +14,7 @@ const vendaRoutes = require('./routes/vendaRoutes');
 const metasRoutes = require('./routes/metas.js');
 const clienteRoutes = require('./routes/clienteRoutes');
 const pedidosRoutes = require("./routes/pedidos");
+const uploadVideoRoute = require("./routes/uploadVideo");
 
 // middlewares
 app.use(cors());
@@ -31,6 +32,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/metas", metasRoutes);
 app.use('/clientes', clienteRoutes);
 app.use("/pedidos", pedidosRoutes);
+app.use(uploadVideoRoute);
 
 // Catálogo
 const catalogoRouter = express.Router();
