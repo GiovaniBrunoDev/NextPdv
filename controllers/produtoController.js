@@ -126,19 +126,33 @@ async function atualizarProduto(req, res) {
   const { id } = req.params;
   const {
     nome,
-    codigo,
     preco,
-    numeracao,
-    estoque,
+    custoUnitario,
+    outrosCustos,
     imagemUrl,
     videoUrl,
     gifUrl,
   } = req.body;
 
+  const data = {};
+
+  if (nome !== undefined) data.nome = nome;
+  if (preco !== undefined) data.preco = Number(preco);
+  if (custoUnitario !== undefined) data.custoUnitario = Number(custoUnitario);
+  if (outrosCustos !== undefined) data.outrosCustos = Number(outrosCustos);
+  if (imagemUrl !== undefined) data.imagemUrl = imagemUrl;
+  if (videoUrl !== undefined) data.videoUrl = videoUrl;
+  if (gifUrl !== undefined || videoUrl !== undefined) {
+    data.gifUrl = gifUrl || findGifByVideoUrl(videoUrl);
+  }
+
   try {
     const atualizado = await prisma.produto.update({
       where: { id: Number(id) },
-      data: { nome, codigo, preco, numeracao, estoque, imagemUrl, videoUrl, gifUrl }
+      data,
+      include: {
+        variacoes: true
+      }
     });
     res.json(atualizado);
   } catch (error) {
