@@ -6,6 +6,7 @@ const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("ffmpeg-static");
 const fs = require("fs");
 const path = require("path");
+const { rememberVideoGif } = require("../services/videoGifCache");
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
@@ -89,6 +90,8 @@ router.post("/upload-video", upload.single("video"), async (req, res) => {
 
         const videoUrl = `${process.env.R2_PUBLIC_URL}/${videoKey}`;
         const gifUrl = `${process.env.R2_PUBLIC_URL}/${gifKey}`;
+
+        rememberVideoGif(videoUrl, gifUrl);
 
         res.json({ videoUrl, gifUrl, url: videoUrl });
 

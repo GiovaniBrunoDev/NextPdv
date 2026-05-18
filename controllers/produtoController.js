@@ -3,6 +3,7 @@ const prisma = new PrismaClient();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { findGifByVideoUrl } = require("../services/videoGifCache");
 
 
 // Buscar produtos por nome (inteligente)
@@ -61,6 +62,8 @@ async function criarProduto(req, res) {
     variacoes
   } = req.body;
 
+  const gifUrlFinal = gifUrl || findGifByVideoUrl(videoUrl);
+
   try {
     const novo = await prisma.produto.create({
       data: {
@@ -69,7 +72,7 @@ async function criarProduto(req, res) {
         custoUnitario,
         imagemUrl,
         videoUrl, 
-        gifUrl, 
+        gifUrl: gifUrlFinal, 
         outrosCustos,
         variacoes: {
           create: variacoes.map(v => ({
