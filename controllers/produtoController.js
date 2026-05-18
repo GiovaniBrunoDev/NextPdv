@@ -55,7 +55,8 @@ async function criarProduto(req, res) {
     preco,
     custoUnitario,
     imagemUrl,
-    videoUrl, // 👈 AQUI
+    videoUrl, 
+    gifUrl, 
     outrosCustos,
     variacoes
   } = req.body;
@@ -68,6 +69,7 @@ async function criarProduto(req, res) {
         custoUnitario,
         imagemUrl,
         videoUrl, 
+        gifUrl, 
         outrosCustos,
         variacoes: {
           create: variacoes.map(v => ({
