@@ -101,4 +101,126 @@ router.post("/entradas", async (req, res) => {
   }
 });
 
+router.post("/entradas/grade", async (req, res) => {
+  const {
+    produtoId,
+    itens,
+    custoUnitario,
+    outrosCustos,
+    fornecedor,
+    observacao,
+    atualizarCustosProduto,
+  } = req.body;
+
+  const produtoIdNumerico = Number(produtoId);
+  const itensNormalizados = Array.isArray(itens)
+    ? itens
+        .map((item) => ({
+          numeracao: String(item.numeracao || "").trim(),
+          quantidade: Number(item.quantidade || 0),
+          variacaoProdutoId: item.variacaoProdutoId ? Number(item.variacaoProdutoId) : null,
+        }))
+        .filter((item) => item.numeracao && Number.isInteger(item.quantidade) && item.quantidade > 0)
+    : [];
+  const itensValidos = Object.values(
+    itensNormalizados.reduce((acc, item) => {
+      const chave = item.numeracao;
+      if (!acc[chave]) acc[chave] = { ...item };
+      else acc[chave].quantidade += item.quantidade;
+      return acc;
+    }, {})
+  );
+
+  if (!produtoIdNumerico || itensValidos.length === 0) {
+    return res.status(400).json({ error: "Informe o produto e ao menos uma numeração com quantidade." });
+  }
+
+  try {
+    const entradas = await prisma.$transaction(async (tx) => {
+      const produto = await tx.produto.findUnique({
+        where: { id: produtoIdNumerico },
+        include: { variacoes: true },
+      });
+
+      if (!produto) throw new Error("Produto não encontrado.");
+
+      const custo = custoUnitario === "" || custoUnitario === undefined ? null : Number(custoUnitario);
+      const outros = outrosCustos === "" || outrosCustos === undefined ? null : Number(outrosCustos);
+
+      if (atualizarCustosProduto) {
+        const dataProduto = {};
+        if (custo !== null && !Number.isNaN(custo)) dataProduto.custoUnitario = custo;
+        if (outros !== null && !Number.isNaN(outros)) dataProduto.outrosCustos = outros;
+
+        if (Object.keys(dataProduto).length > 0) {
+          await tx.produto.update({
+            where: { id: produtoIdNumerico },
+            data: dataProduto,
+          });
+        }
+      }
+
+      const entradasCriadas = [];
+
+      for (const item of itensValidos) {
+        let variacao = item.variacaoProdutoId
+          ? await tx.variacaoProduto.findUnique({ where: { id: item.variacaoProdutoId } })
+          : null;
+
+        if (!variacao) {
+          variacao = await tx.variacaoProduto.findFirst({
+            where: {
+              produtoId: produtoIdNumerico,
+              numeracao: item.numeracao,
+            },
+          });
+        }
+
+        if (!variacao) {
+          variacao = await tx.variacaoProduto.create({
+            data: {
+              produtoId: produtoIdNumerico,
+              numeracao: item.numeracao,
+              estoque: 0,
+            },
+          });
+        }
+
+        await tx.variacaoProduto.update({
+          where: { id: variacao.id },
+          data: {
+            estoque: {
+              increment: item.quantidade,
+            },
+          },
+        });
+
+        const entrada = await tx.entradaEstoque.create({
+          data: {
+            variacaoProdutoId: variacao.id,
+            quantidade: item.quantidade,
+            custoUnitario: custo,
+            outrosCustos: outros,
+            fornecedor: fornecedor?.trim() || null,
+            observacao: observacao?.trim() || null,
+          },
+          include: entradaInclude,
+        });
+
+        entradasCriadas.push(entrada);
+      }
+
+      return entradasCriadas;
+    });
+
+    res.status(201).json({
+      mensagem: "Entrada por grade registrada com sucesso.",
+      entradas,
+    });
+  } catch (error) {
+    console.error("Erro ao registrar entrada por grade:", error);
+    res.status(400).json({ error: error.message || "Erro ao registrar entrada por grade." });
+  }
+});
+
 module.exports = router;
