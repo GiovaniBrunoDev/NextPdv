@@ -26,6 +26,7 @@ model VariacaoProduto {
   estoque     Int
   itens       ItemVenda[]
   itensPedido ItemPedido[] // 🟢 relação adicionada para pedidos
+  entradas    EntradaEstoque[]
   produto     Produto      @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 }
 
@@ -34,6 +35,9 @@ model ItemVenda {
   vendaId           Int
   variacaoProdutoId Int
   quantidade        Int
+  precoUnitario     Float?
+  custoUnitario     Float?
+  outrosCustos      Float?
   variacaoProduto   VariacaoProduto @relation(fields: [variacaoProdutoId], references: [id])
   venda             Venda           @relation(fields: [vendaId], references: [id])
 }
@@ -42,6 +46,8 @@ model Venda {
   id             Int         @id @default(autoincrement())
   data           DateTime    @default(now())
   total          Float
+  subtotalProdutos Float?
+  desconto       Float?      @default(0)
   formaPagamento String?
   tipoEntrega    String?
   taxaEntrega    Float?
@@ -64,6 +70,18 @@ model Cliente {
   observacoes String?
   vendas      Venda[]
   pedidos     Pedido[] // 🟢 relação adicionada para pedidos
+}
+
+model EntradaEstoque {
+  id                Int             @id @default(autoincrement())
+  variacaoProdutoId Int
+  quantidade        Int
+  custoUnitario     Float?
+  outrosCustos      Float?
+  fornecedor        String?
+  observacao        String?
+  criadoEm          DateTime        @default(now())
+  variacaoProduto   VariacaoProduto @relation(fields: [variacaoProdutoId], references: [id], onDelete: Cascade)
 }
 
 model Meta {
@@ -106,5 +124,3 @@ model ItemPedido {
   pedido            Pedido           @relation(fields: [pedidoId], references: [id])
   variacaoProduto   VariacaoProduto  @relation(fields: [variacaoProdutoId], references: [id])
 }
-
-

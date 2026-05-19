@@ -33,6 +33,8 @@ router.post("/", async (req, res) => {
   const {
     produtos,
     total,
+    subtotalProdutos,
+    desconto,
     formaPagamento,
     tipoEntrega,
     taxaEntrega,
@@ -70,6 +72,8 @@ router.post("/", async (req, res) => {
     const novaVenda = await prisma.venda.create({
       data: {
         total,
+        subtotalProdutos: subtotalProdutos === undefined ? null : Number(subtotalProdutos || 0),
+        desconto: desconto === undefined ? 0 : Number(desconto || 0),
         formaPagamento,
         tipoEntrega,
         taxaEntrega,
@@ -82,6 +86,7 @@ router.post("/", async (req, res) => {
     for (const item of produtos) {
       const variacao = await prisma.variacaoProduto.findUnique({
         where: { id: item.variacaoProdutoId },
+        include: { produto: true },
       });
 
       if (!variacao) {
@@ -93,6 +98,9 @@ router.post("/", async (req, res) => {
           vendaId: novaVenda.id,
           variacaoProdutoId: item.variacaoProdutoId,
           quantidade: item.quantidade,
+          precoUnitario: variacao.produto.preco,
+          custoUnitario: variacao.produto.custoUnitario,
+          outrosCustos: variacao.produto.outrosCustos,
         },
       });
 
@@ -240,6 +248,7 @@ router.post("/troca", async (req, res) => {
 
     const variacaoNova = await prisma.variacaoProduto.findUnique({
       where: { id: novaVariacaoId },
+      include: { produto: true },
     });
 
     if (!variacaoNova) {
@@ -254,6 +263,9 @@ router.post("/troca", async (req, res) => {
       where: { id: item.id },
       data: {
         variacaoProdutoId: novaVariacaoId,
+        precoUnitario: item.precoUnitario ?? variacaoNova.produto.preco,
+        custoUnitario: variacaoNova.produto.custoUnitario,
+        outrosCustos: variacaoNova.produto.outrosCustos,
       },
     });
 
