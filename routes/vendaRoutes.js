@@ -3,18 +3,42 @@ const router = express.Router();
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
-// POST /vendas
+const vendaInclude = {
+  cliente: {
+    select: {
+      id: true,
+      nome: true,
+      telefone: true,
+      endereco: true,
+      bairro: true,
+      cidade: true,
+      estado: true,
+      cep: true,
+      observacoes: true,
+    },
+  },
+  itens: {
+    include: {
+      variacaoProduto: {
+        include: {
+          produto: true,
+        },
+      },
+    },
+  },
+};
+
 // POST /vendas
 router.post("/", async (req, res) => {
   const {
-    produtos,         // [{ variacaoProdutoId: 1, quantidade: 2 }]
+    produtos,
     total,
     formaPagamento,
     tipoEntrega,
     taxaEntrega,
     endereco,
     entregador,
-    clienteId
+    clienteId,
   } = req.body;
 
   if (!produtos || produtos.length === 0) {
@@ -24,26 +48,24 @@ router.post("/", async (req, res) => {
   try {
     let enderecoFinal = endereco?.trim() || null;
 
-if (clienteId) {
-  const cliente = await prisma.cliente.findUnique({
-    where: { id: clienteId },
-  });
-
-  if (tipoEntrega === "entrega") {
-    if (!enderecoFinal) {
-      // Monta o endereço a partir do cadastro do cliente
-      enderecoFinal = `${cliente?.endereco || ""}, ${cliente?.bairro || ""}, ${cliente?.cidade || ""} - ${cliente?.estado || ""}, ${cliente?.cep || ""}`.trim();
-    } else if (!cliente?.endereco && enderecoFinal) {
-      // Atualiza o cadastro do cliente com o novo endereço informado
-      await prisma.cliente.update({
+    if (clienteId) {
+      const cliente = await prisma.cliente.findUnique({
         where: { id: clienteId },
-        data: {
-          endereco: enderecoFinal
-        }
       });
+
+      if (tipoEntrega === "entrega") {
+        if (!enderecoFinal) {
+          enderecoFinal = `${cliente?.endereco || ""}, ${cliente?.bairro || ""}, ${cliente?.cidade || ""} - ${cliente?.estado || ""}, ${cliente?.cep || ""}`.trim();
+        } else if (!cliente?.endereco && enderecoFinal) {
+          await prisma.cliente.update({
+            where: { id: clienteId },
+            data: {
+              endereco: enderecoFinal,
+            },
+          });
+        }
+      }
     }
-  }
-}
 
     const novaVenda = await prisma.venda.create({
       data: {
@@ -54,12 +76,12 @@ if (clienteId) {
         endereco: enderecoFinal,
         entregador,
         clienteId,
-      }
+      },
     });
 
     for (const item of produtos) {
       const variacao = await prisma.variacaoProduto.findUnique({
-        where: { id: item.variacaoProdutoId }
+        where: { id: item.variacaoProdutoId },
       });
 
       if (!variacao) {
@@ -70,17 +92,17 @@ if (clienteId) {
         data: {
           vendaId: novaVenda.id,
           variacaoProdutoId: item.variacaoProdutoId,
-          quantidade: item.quantidade
-        }
+          quantidade: item.quantidade,
+        },
       });
 
       await prisma.variacaoProduto.update({
         where: { id: item.variacaoProdutoId },
         data: {
           estoque: {
-            decrement: item.quantidade
-          }
-        }
+            decrement: item.quantidade,
+          },
+        },
       });
     }
 
@@ -91,37 +113,13 @@ if (clienteId) {
   }
 });
 
-
 // GET /vendas
 router.get("/", async (req, res) => {
   try {
     const vendas = await prisma.venda.findMany({
-  orderBy: { data: "desc" },
-  include: {
-    cliente: {
-      select: {
-        id: true,
-        nome: true,
-        telefone: true,
-        endereco: true,
-        bairro: true,
-        cidade: true,
-        estado: true,
-        cep: true
-      }
-    },
-    itens: {
-      include: {
-        variacaoProduto: {
-          include: {
-            produto: true
-          }
-        }
-      }
-    }
-  }
-});
-
+      orderBy: { data: "desc" },
+      include: vendaInclude,
+    });
 
     res.json(vendas);
   } catch (error) {
@@ -130,12 +128,51 @@ router.get("/", async (req, res) => {
   }
 });
 
+// PUT /vendas/:id
+router.put("/:id", async (req, res) => {
+  const { id } = req.params;
+  const {
+    formaPagamento,
+    tipoEntrega,
+    taxaEntrega,
+    endereco,
+    entregador,
+    clienteId,
+  } = req.body;
+
+  try {
+    const vendaId = parseInt(id);
+    const data = {};
+
+    if (formaPagamento !== undefined) data.formaPagamento = formaPagamento || null;
+    if (tipoEntrega !== undefined) data.tipoEntrega = tipoEntrega || null;
+    if (taxaEntrega !== undefined) data.taxaEntrega = taxaEntrega === "" || taxaEntrega === null ? null : Number(taxaEntrega);
+    if (endereco !== undefined) data.endereco = endereco?.trim() || null;
+    if (entregador !== undefined) data.entregador = entregador?.trim() || null;
+    if (clienteId !== undefined) data.clienteId = clienteId ? Number(clienteId) : null;
+
+    await prisma.venda.update({
+      where: { id: vendaId },
+      data,
+    });
+
+    const vendaAtualizada = await prisma.venda.findUnique({
+      where: { id: vendaId },
+      include: vendaInclude,
+    });
+
+    res.json(vendaAtualizada);
+  } catch (error) {
+    console.error("Erro ao atualizar venda:", error);
+    res.status(500).json({ error: "Erro ao atualizar venda." });
+  }
+});
+
 // DELETE /vendas/:id
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Busca a venda junto com seus itens
     const venda = await prisma.venda.findUnique({
       where: { id: parseInt(id) },
       include: { itens: true },
@@ -145,26 +182,23 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ error: "Venda não encontrada." });
     }
 
-    // Repor o estoque dos itens
     for (const item of venda.itens) {
       await prisma.variacaoProduto.update({
         where: { id: item.variacaoProdutoId },
         data: {
           estoque: {
-            increment: item.quantidade
-          }
-        }
+            increment: item.quantidade,
+          },
+        },
       });
     }
 
-    // Excluir itens relacionados
     await prisma.itemVenda.deleteMany({
-      where: { vendaId: venda.id }
+      where: { vendaId: venda.id },
     });
 
-    // Excluir a venda
     await prisma.venda.delete({
-      where: { id: venda.id }
+      where: { id: venda.id },
     });
 
     res.json({ mensagem: "Venda excluída com sucesso!" });
@@ -179,36 +213,33 @@ router.post("/troca", async (req, res) => {
   const { vendaId, itemId, novaVariacaoId } = req.body;
 
   try {
-    // Busca venda e item
     const venda = await prisma.venda.findUnique({
       where: { id: parseInt(vendaId) },
       include: {
-        itens: true
-      }
+        itens: true,
+      },
     });
 
     if (!venda) {
       return res.status(404).json({ error: "Venda não encontrada." });
     }
 
-    const item = venda.itens.find(i => i.id === parseInt(itemId));
+    const item = venda.itens.find((i) => i.id === parseInt(itemId));
     if (!item) {
       return res.status(404).json({ error: "Item da venda não encontrado." });
     }
 
-    // Repor estoque da variação antiga
     await prisma.variacaoProduto.update({
       where: { id: item.variacaoProdutoId },
       data: {
         estoque: {
-          increment: item.quantidade
-        }
-      }
+          increment: item.quantidade,
+        },
+      },
     });
 
-    // Verificar se existe estoque disponível na nova variação
     const variacaoNova = await prisma.variacaoProduto.findUnique({
-      where: { id: novaVariacaoId }
+      where: { id: novaVariacaoId },
     });
 
     if (!variacaoNova) {
@@ -219,46 +250,32 @@ router.post("/troca", async (req, res) => {
       return res.status(400).json({ error: "Estoque insuficiente para a nova variação." });
     }
 
-    // Atualizar o item para a nova variação
     await prisma.itemVenda.update({
       where: { id: item.id },
       data: {
-        variacaoProdutoId: novaVariacaoId
-      }
+        variacaoProdutoId: novaVariacaoId,
+      },
     });
 
-  const vendaAtualizada = await prisma.venda.findUnique({
-  where: { id: venda.id },
-  include: {
-    cliente: true,
-    itens: {
-      include: {
-        variacaoProduto: {
-          include: { produto: true },
-        },
-      },
-    },
-  },
-});
-    // Baixar o estoque da nova variação
     await prisma.variacaoProduto.update({
       where: { id: novaVariacaoId },
       data: {
         estoque: {
-          decrement: item.quantidade
-        }
-      }
+          decrement: item.quantidade,
+        },
+      },
     });
 
-    
+    const vendaAtualizada = await prisma.venda.findUnique({
+      where: { id: venda.id },
+      include: vendaInclude,
+    });
 
-    res.json({ mensagem: "Troca realizada com sucesso!" });
+    res.json({ mensagem: "Troca realizada com sucesso!", venda: vendaAtualizada });
   } catch (error) {
     console.error("Erro ao realizar troca:", error);
     res.status(500).json({ error: "Erro ao realizar troca." });
   }
 });
-
-
 
 module.exports = router;
