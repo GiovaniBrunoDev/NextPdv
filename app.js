@@ -4,7 +4,7 @@ const path = require("path");
 const { PrismaClient } = require("@prisma/client");
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 const prisma = new PrismaClient();
 
@@ -19,6 +19,9 @@ const pedidosRoutes = require("./routes/pedidos");
 const uploadVideoRoute = require("./routes/uploadVideo");
 const relatorioRoutes = require("./routes/relatorioRoutes");
 const estoqueRoutes = require("./routes/estoqueRoutes");
+const authRoutes = require("./routes/authRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const { authRequired, lojaRequired } = require("./middlewares/auth");
 
 // middlewares
 app.use(cors());
@@ -30,15 +33,16 @@ app.get("/", (req, res) => {
 });
 
 // PDV
-app.use('/produtos', produtoRoutes);
-app.use('/vendas', vendaRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.use("/metas", metasRoutes);
-app.use('/clientes', clienteRoutes);
-app.use("/pedidos", pedidosRoutes);
-app.use("/relatorios", relatorioRoutes);
-app.use("/estoque", estoqueRoutes);
-app.use(uploadVideoRoute);
+app.use("/auth", authRoutes);
+app.use("/admin", adminRoutes);
+app.use('/produtos', authRequired, lojaRequired, produtoRoutes);
+app.use('/vendas', authRequired, lojaRequired, vendaRoutes);
+app.use("/metas", authRequired, lojaRequired, metasRoutes);
+app.use('/clientes', authRequired, lojaRequired, clienteRoutes);
+app.use("/pedidos", authRequired, lojaRequired, pedidosRoutes);
+app.use("/relatorios", authRequired, lojaRequired, relatorioRoutes);
+app.use("/estoque", authRequired, lojaRequired, estoqueRoutes);
 
 // Catálogo
 const catalogoRouter = express.Router();
@@ -123,6 +127,8 @@ catalogoRouter.get('/produto/:id', async (req, res) => {
 
 // usa prefixo /catalogo
 app.use('/catalogo', catalogoRouter);
+
+app.use(authRequired, lojaRequired, uploadVideoRoute);
 
 // start
 app.listen(PORT, '0.0.0.0', () => {
