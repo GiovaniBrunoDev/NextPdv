@@ -6,14 +6,12 @@ const ffmpeg = require("fluent-ffmpeg");
 const ffmpegPath = require("ffmpeg-static");
 const fs = require("fs");
 const path = require("path");
-const { PrismaClient } = require("@prisma/client");
 const { rememberVideoGif } = require("../services/videoGifCache");
 const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 const r2 = new S3Client({
     region: "auto",
@@ -27,24 +25,10 @@ const r2 = new S3Client({
 router.post("/upload-video", assinaturaAtivaRequired, requireRole("admin", "gerente"), upload.single("video"), async (req, res) => {
     try {
         const file = req.file;
-        const produtoId = req.body.produtoId ? Number(req.body.produtoId) : null;
-        let nomeProduto = req.body.nomeProduto || "produto";
+        const nomeProduto = req.body.nomeProduto || "produto";
 
         if (!file) {
             return res.status(400).json({ error: "Nenhum arquivo enviado" });
-        }
-
-        if (produtoId) {
-            const produto = await prisma.produto.findFirst({
-                where: { id: produtoId, lojaId: req.loja.id },
-                select: { id: true, nome: true },
-            });
-
-            if (!produto) {
-                return res.status(404).json({ error: "Produto nao encontrado nesta loja." });
-            }
-
-            nomeProduto = produto.nome;
         }
 
         // 🔤 SLUG
