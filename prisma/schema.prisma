@@ -7,8 +7,99 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Loja {
+  id           Int              @id @default(autoincrement())
+  nome         String
+  slug         String           @unique
+  ativa        Boolean          @default(true)
+  criadaEm     DateTime         @default(now())
+  atualizadaEm DateTime         @updatedAt
+  produtos     Produto[]
+  clientes     Cliente[]
+  vendas       Venda[]
+  pedidos      Pedido[]
+  metas        Meta[]
+  entradas     EntradaEstoque[]
+  membros      MembroLoja[]
+  assinatura   Assinatura?
+  convites     ConviteLoja[]
+}
+
+model Usuario {
+  id           Int           @id @default(autoincrement())
+  nome         String
+  email        String        @unique
+  senhaHash    String
+  superadmin   Boolean       @default(false)
+  ativo        Boolean       @default(true)
+  criadoEm     DateTime      @default(now())
+  atualizadoEm DateTime      @updatedAt
+  membros      MembroLoja[]
+  convites     ConviteLoja[]
+}
+
+model MembroLoja {
+  id           Int      @id @default(autoincrement())
+  usuarioId    Int
+  lojaId       Int
+  papel        String
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  usuario      Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  loja         Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, lojaId])
+}
+
+model Plano {
+  id           Int           @id @default(autoincrement())
+  nome         String
+  valorMensal  Float
+  descricao    String?
+  ativo        Boolean       @default(true)
+  criadoEm     DateTime      @default(now())
+  atualizadoEm DateTime      @updatedAt
+  assinaturas  Assinatura[]
+  convites     ConviteLoja[]
+}
+
+model Assinatura {
+  id           Int      @id @default(autoincrement())
+  lojaId       Int      @unique
+  planoId      Int?
+  status       String   @default("trial")
+  inicioTrial  DateTime @default(now())
+  fimTrial     DateTime
+  venceEm      DateTime
+  criadaEm     DateTime @default(now())
+  atualizadaEm DateTime @updatedAt
+  loja         Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  plano        Plano?   @relation(fields: [planoId], references: [id], onDelete: SetNull)
+}
+
+model ConviteLoja {
+  id           Int      @id @default(autoincrement())
+  token        String   @unique
+  email        String?
+  nomeLoja     String
+  slugLoja     String
+  planoId      Int?
+  papel        String   @default("admin")
+  status       String   @default("pendente")
+  criadoPorId  Int?
+  lojaId       Int?
+  expiraEm     DateTime
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  plano        Plano?   @relation(fields: [planoId], references: [id], onDelete: SetNull)
+  criadoPor    Usuario? @relation(fields: [criadoPorId], references: [id], onDelete: SetNull)
+  loja         Loja?    @relation(fields: [lojaId], references: [id], onDelete: SetNull)
+}
+
 model Produto {
   id            Int               @id @default(autoincrement())
+  lojaId        Int
   nome          String
   preco         Float
   custoUnitario Float
@@ -17,17 +108,18 @@ model Produto {
   videoUrl      String?
   gifUrl        String?
   variacoes     VariacaoProduto[]
+  loja          Loja              @relation(fields: [lojaId], references: [id], onDelete: Cascade)
 }
 
 model VariacaoProduto {
-  id          Int          @id @default(autoincrement())
+  id          Int              @id @default(autoincrement())
   produtoId   Int
   numeracao   String
   estoque     Int
   itens       ItemVenda[]
-  itensPedido ItemPedido[] // 🟢 relação adicionada para pedidos
+  itensPedido ItemPedido[]
   entradas    EntradaEstoque[]
-  produto     Produto      @relation(fields: [produtoId], references: [id], onDelete: Cascade)
+  produto     Produto          @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 }
 
 model ItemVenda {
@@ -43,23 +135,26 @@ model ItemVenda {
 }
 
 model Venda {
-  id             Int         @id @default(autoincrement())
-  data           DateTime    @default(now())
-  total          Float
+  id               Int         @id @default(autoincrement())
+  lojaId           Int
+  data             DateTime    @default(now())
+  total            Float
   subtotalProdutos Float?
-  desconto       Float?      @default(0)
-  formaPagamento String?
-  tipoEntrega    String?
-  taxaEntrega    Float?
-  entregador     String?
-  endereco       String?
-  clienteId      Int?
-  itens          ItemVenda[]
-  cliente        Cliente?    @relation(fields: [clienteId], references: [id])
+  desconto         Float?      @default(0)
+  formaPagamento   String?
+  tipoEntrega      String?
+  taxaEntrega      Float?
+  entregador       String?
+  endereco         String?
+  clienteId        Int?
+  itens            ItemVenda[]
+  cliente          Cliente?    @relation(fields: [clienteId], references: [id])
+  loja             Loja        @relation(fields: [lojaId], references: [id], onDelete: Cascade)
 }
 
 model Cliente {
   id          Int      @id @default(autoincrement())
+  lojaId      Int
   nome        String
   telefone    String?
   endereco    String?
@@ -69,11 +164,13 @@ model Cliente {
   cep         String?
   observacoes String?
   vendas      Venda[]
-  pedidos     Pedido[] // 🟢 relação adicionada para pedidos
+  pedidos     Pedido[]
+  loja        Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
 }
 
 model EntradaEstoque {
   id                Int             @id @default(autoincrement())
+  lojaId            Int
   variacaoProdutoId Int
   quantidade        Int
   custoUnitario     Float?
@@ -82,24 +179,28 @@ model EntradaEstoque {
   observacao        String?
   criadoEm          DateTime        @default(now())
   variacaoProduto   VariacaoProduto @relation(fields: [variacaoProdutoId], references: [id], onDelete: Cascade)
+  loja              Loja            @relation(fields: [lojaId], references: [id], onDelete: Cascade)
 }
 
 model Meta {
   id           Int      @id @default(autoincrement())
+  lojaId       Int
   titulo       String
   descricao    String?
   valorMeta    Float
-  tipo         String // "vendas", "lucro", etc.
-  periodo      String // "dia", "semana", "mes"
+  tipo         String
+  periodo      String
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
+  loja         Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
 }
 
 model Pedido {
-  id             Int           @id @default(autoincrement())
+  id             Int          @id @default(autoincrement())
+  lojaId         Int
   clienteId      Int?
-  cliente        Cliente?      @relation(fields: [clienteId], references: [id])
-  dataCriacao    DateTime      @default(now())
+  cliente        Cliente?     @relation(fields: [clienteId], references: [id])
+  dataCriacao    DateTime     @default(now())
   dataEntrega    DateTime?
   horarioEntrega String?
   tipoEntrega    String?
@@ -107,20 +208,20 @@ model Pedido {
   observacoes    String?
   entregador     String?
   formaPagamento String?
-  taxaEntrega    Float?        @default(0)
-  total          Float         @default(0)
-  status         String        @default("reservado")
+  taxaEntrega    Float?       @default(0)
+  total          Float        @default(0)
+  status         String       @default("reservado")
   itens          ItemPedido[]
+  loja           Loja         @relation(fields: [lojaId], references: [id], onDelete: Cascade)
 }
 
-
 model ItemPedido {
-  id                Int              @id @default(autoincrement())
+  id                Int             @id @default(autoincrement())
   pedidoId          Int
   variacaoProdutoId Int
   quantidade        Int
   precoUnitario     Float
   subtotal          Float
-  pedido            Pedido           @relation(fields: [pedidoId], references: [id])
-  variacaoProduto   VariacaoProduto  @relation(fields: [variacaoProdutoId], references: [id])
+  pedido            Pedido          @relation(fields: [pedidoId], references: [id])
+  variacaoProduto   VariacaoProduto @relation(fields: [variacaoProdutoId], references: [id])
 }

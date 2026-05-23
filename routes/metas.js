@@ -1,20 +1,30 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
+const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// Criar meta
-router.post("/", async (req, res) => {
+function lojaId(req) {
+  return req.loja.id;
+}
+
+router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente"), async (req, res) => {
   try {
     const { titulo, descricao, valorMeta, tipo, periodo } = req.body;
-
     if (!titulo || valorMeta == null) {
-      return res.status(400).json({ error: "Campos obrigatórios faltando" });
+      return res.status(400).json({ error: "Campos obrigatorios faltando" });
     }
 
     const novaMeta = await prisma.meta.create({
-      data: { titulo, descricao, valorMeta, tipo, periodo },
+      data: {
+        lojaId: lojaId(req),
+        titulo,
+        descricao,
+        valorMeta: Number(valorMeta),
+        tipo,
+        periodo,
+      },
     });
 
     res.json(novaMeta);
@@ -24,35 +34,41 @@ router.post("/", async (req, res) => {
   }
 });
 
-
-// Listar todas
 router.get("/", async (req, res) => {
   try {
-    const metas = await prisma.meta.findMany({ orderBy: { criadoEm: "desc" } });
+    const metas = await prisma.meta.findMany({
+      where: { lojaId: lojaId(req) },
+      orderBy: { criadoEm: "desc" },
+    });
     res.json(metas);
   } catch (err) {
     res.status(500).json({ error: "Erro ao listar metas" });
   }
 });
 
-// Buscar uma
 router.get("/:id", async (req, res) => {
   try {
-    const meta = await prisma.meta.findUnique({ where: { id: Number(req.params.id) } });
-    if (!meta) return res.status(404).json({ error: "Meta não encontrada" });
+    const meta = await prisma.meta.findFirst({
+      where: { id: Number(req.params.id), lojaId: lojaId(req) },
+    });
+    if (!meta) return res.status(404).json({ error: "Meta nao encontrada" });
     res.json(meta);
   } catch (err) {
     res.status(500).json({ error: "Erro ao buscar meta" });
   }
 });
 
-// Atualizar
-router.put("/:id", async (req, res) => {
+router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), async (req, res) => {
   try {
     const { titulo, descricao, valorMeta, tipo, periodo } = req.body;
+    const existente = await prisma.meta.findFirst({
+      where: { id: Number(req.params.id), lojaId: lojaId(req) },
+    });
+    if (!existente) return res.status(404).json({ error: "Meta nao encontrada" });
+
     const meta = await prisma.meta.update({
-      where: { id: Number(req.params.id) },
-      data: { titulo, descricao, valorMeta, tipo, periodo },
+      where: { id: existente.id },
+      data: { titulo, descricao, valorMeta: Number(valorMeta), tipo, periodo },
     });
     res.json(meta);
   } catch (err) {
@@ -60,11 +76,15 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// Excluir
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", assinaturaAtivaRequired, requireRole("admin"), async (req, res) => {
   try {
-    await prisma.meta.delete({ where: { id: Number(req.params.id) } });
-    res.json({ message: "Meta excluída com sucesso" });
+    const existente = await prisma.meta.findFirst({
+      where: { id: Number(req.params.id), lojaId: lojaId(req) },
+    });
+    if (!existente) return res.status(404).json({ error: "Meta nao encontrada" });
+
+    await prisma.meta.delete({ where: { id: existente.id } });
+    res.json({ message: "Meta excluida com sucesso" });
   } catch (err) {
     res.status(500).json({ error: "Erro ao excluir meta" });
   }

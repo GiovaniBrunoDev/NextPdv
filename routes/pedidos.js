@@ -1,16 +1,19 @@
 const express = require("express");
-const router = express.Router();
 const { PrismaClient } = require("@prisma/client");
+const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
+
+const router = express.Router();
 const prisma = new PrismaClient();
 
-const STATUS_COM_ESTOQUE_RESERVADO = ["reservado", "agendado"];
+const STATUS_COM_ESTOQUE_RESERVADO = ["reservado", "agendado", "confirmado"];
 const STATUS_FINAIS = ["cancelado", "entregue"];
 
-function toNumberOrNull(value) {
-  if (value === null || value === undefined || value === "") {
-    return null;
-  }
+function lojaId(req) {
+  return req.loja.id;
+}
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
   const numero = Number(value);
   return Number.isFinite(numero) ? numero : null;
 }
@@ -37,7 +40,7 @@ function includeVendaCompleta() {
   };
 }
 
-router.post("/", async (req, res) => {
+router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
   try {
     const {
       clienteId,
@@ -55,10 +58,7 @@ router.post("/", async (req, res) => {
     } = req.body;
 
     const produtos = montarItensPedido(produtosDoBody || itensDoBody || []);
-
-    if (!produtos.length) {
-      return res.status(400).json({ error: "Nenhum produto informado." });
-    }
+    if (!produtos.length) return res.status(400).json({ error: "Nenhum produto informado." });
 
     const itemInvalido = produtos.find(
       (item) =>
@@ -66,54 +66,48 @@ router.post("/", async (req, res) => {
         !Number.isInteger(item.quantidade) ||
         item.quantidade <= 0
     );
-
-    if (itemInvalido) {
-      return res.status(400).json({ error: "Itens do pedido invalidos." });
-    }
+    if (itemInvalido) return res.status(400).json({ error: "Itens do pedido invalidos." });
 
     const novaDataEntrega = dataEntrega ? new Date(dataEntrega) : null;
     const clienteIdNumerico = toNumberOrNull(clienteId);
     const taxaEntregaNumerica = toNumberOrNull(taxaEntrega) ?? 0;
     const totalInformado = toNumberOrNull(total);
 
-    if (clienteId && !Number.isInteger(clienteIdNumerico)) {
-      return res.status(400).json({ error: "Cliente invalido." });
-    }
-
     const pedido = await prisma.$transaction(async (tx) => {
-      const itensComPreco = [];
+      if (clienteIdNumerico) {
+        const cliente = await tx.cliente.findFirst({
+          where: { id: clienteIdNumerico, lojaId: lojaId(req) },
+        });
+        if (!cliente) throw new Error("Cliente nao encontrado nesta loja.");
+      }
 
+      const itensComPreco = [];
       for (const item of produtos) {
-        const variacao = await tx.variacaoProduto.findUnique({
-          where: { id: item.variacaoProdutoId },
+        const variacao = await tx.variacaoProduto.findFirst({
+          where: {
+            id: item.variacaoProdutoId,
+            produto: { lojaId: lojaId(req) },
+          },
           include: { produto: true },
         });
-
-        if (!variacao) {
-          const erro = new Error(`Variacao ${item.variacaoProdutoId} nao encontrada.`);
-          erro.statusCode = 404;
-          throw erro;
-        }
+        if (!variacao) throw new Error(`Variacao ${item.variacaoProdutoId} nao encontrada.`);
 
         const reserva = await tx.variacaoProduto.updateMany({
           where: {
             id: item.variacaoProdutoId,
             estoque: { gte: item.quantidade },
+            produto: { lojaId: lojaId(req) },
           },
           data: { estoque: { decrement: item.quantidade } },
         });
 
         if (reserva.count === 0) {
-          const erro = new Error(
-            `Estoque insuficiente para ${variacao.produto.nome} (${variacao.numeracao}).`
-          );
-          erro.statusCode = 400;
-          throw erro;
+          throw new Error(`Estoque insuficiente para ${variacao.produto.nome} (${variacao.numeracao}).`);
         }
 
         const precoUnitario = item.precoUnitario ?? variacao.produto.preco;
         itensComPreco.push({
-          variacaoProdutoId: item.variacaoProdutoId,
+          variacaoProdutoId: variacao.id,
           quantidade: item.quantidade,
           precoUnitario,
           subtotal: item.quantidade * precoUnitario,
@@ -125,7 +119,8 @@ router.post("/", async (req, res) => {
 
       return tx.pedido.create({
         data: {
-          cliente: clienteIdNumerico ? { connect: { id: clienteIdNumerico } } : undefined,
+          lojaId: lojaId(req),
+          clienteId: clienteIdNumerico || null,
           observacoes,
           dataEntrega: novaDataEntrega,
           horarioEntrega,
@@ -138,7 +133,7 @@ router.post("/", async (req, res) => {
           status: novaDataEntrega ? "agendado" : "reservado",
           itens: {
             create: itensComPreco.map((item) => ({
-              variacaoProduto: { connect: { id: item.variacaoProdutoId } },
+              variacaoProdutoId: item.variacaoProdutoId,
               quantidade: item.quantidade,
               precoUnitario: item.precoUnitario,
               subtotal: item.subtotal,
@@ -152,40 +147,24 @@ router.post("/", async (req, res) => {
     res.status(201).json({ message: "Pedido criado com sucesso!", pedido });
   } catch (error) {
     console.error("Erro ao criar pedido:", error);
-    res
-      .status(error.statusCode || 500)
-      .json({ error: error.statusCode ? error.message : "Erro interno ao criar pedido." });
+    res.status(400).json({ error: error.message || "Erro interno ao criar pedido." });
   }
 });
 
-router.put("/:id/status", async (req, res) => {
+router.put("/:id/status", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
   try {
-    const { id } = req.params;
     const { status } = req.body;
-
     if (!status || status === "confirmado") {
-      return res
-        .status(400)
-        .json({ error: "Para confirmar um pedido, use a acao de confirmar venda." });
+      return res.status(400).json({ error: "Para confirmar um pedido, use a acao de confirmar venda." });
     }
 
     const pedido = await prisma.$transaction(async (tx) => {
-      const pedidoAtual = await tx.pedido.findUnique({
-        where: { id: Number(id) },
+      const pedidoAtual = await tx.pedido.findFirst({
+        where: { id: Number(req.params.id), lojaId: lojaId(req) },
         include: { itens: true },
       });
-
-      if (!pedidoAtual) {
-        const erro = new Error("Pedido nao encontrado.");
-        erro.statusCode = 404;
-        throw erro;
-      }
-
-      if (STATUS_FINAIS.includes(pedidoAtual.status)) {
-        const erro = new Error("Pedido ja foi finalizado.");
-        erro.statusCode = 400;
-        throw erro;
-      }
+      if (!pedidoAtual) throw new Error("Pedido nao encontrado.");
+      if (STATUS_FINAIS.includes(pedidoAtual.status)) throw new Error("Pedido ja foi finalizado.");
 
       if (status === "cancelado" && STATUS_COM_ESTOQUE_RESERVADO.includes(pedidoAtual.status)) {
         for (const item of pedidoAtual.itens) {
@@ -197,7 +176,7 @@ router.put("/:id/status", async (req, res) => {
       }
 
       return tx.pedido.update({
-        where: { id: Number(id) },
+        where: { id: pedidoAtual.id },
         data: { status },
         include: includePedidoCompleto(),
       });
@@ -206,9 +185,7 @@ router.put("/:id/status", async (req, res) => {
     res.json({ message: `Status atualizado para ${status}.`, pedido });
   } catch (error) {
     console.error("Erro ao atualizar status:", error);
-    res
-      .status(error.statusCode || 500)
-      .json({ error: error.statusCode ? error.message : "Erro ao atualizar status do pedido." });
+    res.status(400).json({ error: error.message || "Erro ao atualizar status do pedido." });
   }
 });
 
@@ -216,12 +193,12 @@ router.get("/", async (req, res) => {
   try {
     const pedidos = await prisma.pedido.findMany({
       where: {
+        lojaId: lojaId(req),
         status: { notIn: STATUS_FINAIS },
       },
       orderBy: { dataCriacao: "desc" },
       include: includePedidoCompleto(),
     });
-
     res.json(pedidos);
   } catch (error) {
     console.error("Erro ao listar pedidos:", error);
@@ -239,6 +216,7 @@ router.get("/hoje", async (req, res) => {
 
     const pedidosHoje = await prisma.pedido.findMany({
       where: {
+        lojaId: lojaId(req),
         dataEntrega: { gte: inicio, lte: fim },
         status: { notIn: STATUS_FINAIS },
       },
@@ -253,31 +231,22 @@ router.get("/hoje", async (req, res) => {
   }
 });
 
-router.post("/:id/confirmar", async (req, res) => {
+router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
   try {
-    const { id } = req.params;
-
     const venda = await prisma.$transaction(async (tx) => {
-      const pedido = await tx.pedido.findUnique({
-        where: { id: Number(id) },
+      const pedido = await tx.pedido.findFirst({
+        where: { id: Number(req.params.id), lojaId: lojaId(req) },
         include: { itens: true },
       });
-
-      if (!pedido) {
-        const erro = new Error("Pedido nao encontrado.");
-        erro.statusCode = 404;
-        throw erro;
-      }
-
+      if (!pedido) throw new Error("Pedido nao encontrado.");
       if (!STATUS_COM_ESTOQUE_RESERVADO.includes(pedido.status)) {
-        const erro = new Error("Pedido nao esta com estoque reservado para confirmacao.");
-        erro.statusCode = 400;
-        throw erro;
+        throw new Error("Pedido nao esta com estoque reservado para confirmacao.");
       }
 
       const novaVenda = await tx.venda.create({
         data: {
-          cliente: pedido.clienteId ? { connect: { id: pedido.clienteId } } : undefined,
+          lojaId: lojaId(req),
+          clienteId: pedido.clienteId || null,
           tipoEntrega: pedido.tipoEntrega,
           taxaEntrega: pedido.taxaEntrega,
           entregador: pedido.entregador,
@@ -286,8 +255,9 @@ router.post("/:id/confirmar", async (req, res) => {
           total: pedido.total,
           itens: {
             create: pedido.itens.map((item) => ({
-              variacaoProduto: { connect: { id: item.variacaoProdutoId } },
+              variacaoProdutoId: item.variacaoProdutoId,
               quantidade: item.quantidade,
+              precoUnitario: item.precoUnitario,
             })),
           },
         },
@@ -296,16 +266,13 @@ router.post("/:id/confirmar", async (req, res) => {
 
       await tx.itemPedido.deleteMany({ where: { pedidoId: pedido.id } });
       await tx.pedido.delete({ where: { id: pedido.id } });
-
       return novaVenda;
     });
 
     res.json({ message: "Pedido convertido em venda com sucesso!", venda });
   } catch (error) {
     console.error("Erro ao confirmar pedido:", error);
-    res
-      .status(error.statusCode || 500)
-      .json({ error: error.statusCode ? error.message : "Erro ao confirmar pedido." });
+    res.status(400).json({ error: error.message || "Erro ao confirmar pedido." });
   }
 });
 

@@ -1,124 +1,46 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
-const { PrismaClient } = require("@prisma/client");
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
-const prisma = new PrismaClient();
-
-// rotas do PDV
-const produtoRoutes = require('./routes/produtoRoutes');
-const vendaRoutes = require('./routes/vendaRoutes');
-const metasRoutes = require('./routes/metas.js');
-const clienteRoutes = require('./routes/clienteRoutes');
+const produtoRoutes = require("./routes/produtoRoutes");
+const vendaRoutes = require("./routes/vendaRoutes");
+const metasRoutes = require("./routes/metas");
+const clienteRoutes = require("./routes/clienteRoutes");
 const pedidosRoutes = require("./routes/pedidos");
 const uploadVideoRoute = require("./routes/uploadVideo");
 const relatorioRoutes = require("./routes/relatorioRoutes");
 const estoqueRoutes = require("./routes/estoqueRoutes");
+const authRoutes = require("./routes/authRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const catalogoRoutes = require("./routes/catalogoRoutes");
+const { authRequired, lojaRequired } = require("./middlewares/auth");
 
-// middlewares
 app.use(cors());
 app.use(express.json());
 
-// rota raiz
 app.get("/", (req, res) => {
-  res.send("Servidor PDV + Catálogo está funcionando 🚀");
+  res.send("Servidor PDV multi-loja esta funcionando.");
 });
 
-// PDV
-app.use('/produtos', produtoRoutes);
-app.use('/vendas', vendaRoutes);
+app.use("/auth", authRoutes);
+app.use("/admin", adminRoutes);
+
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.use("/metas", metasRoutes);
-app.use('/clientes', clienteRoutes);
-app.use("/pedidos", pedidosRoutes);
-app.use("/relatorios", relatorioRoutes);
-app.use("/estoque", estoqueRoutes);
-app.use(uploadVideoRoute);
 
-// Catálogo
-const catalogoRouter = express.Router();
+app.use("/produtos", authRequired, lojaRequired, produtoRoutes);
+app.use("/vendas", authRequired, lojaRequired, vendaRoutes);
+app.use("/metas", authRequired, lojaRequired, metasRoutes);
+app.use("/clientes", authRequired, lojaRequired, clienteRoutes);
+app.use("/pedidos", authRequired, lojaRequired, pedidosRoutes);
+app.use("/relatorios", authRequired, lojaRequired, relatorioRoutes);
+app.use("/estoque", authRequired, lojaRequired, estoqueRoutes);
+app.use(authRequired, lojaRequired, uploadVideoRoute);
 
-// GET /catalogo/produtos?numeracao=NN
-catalogoRouter.get('/produtos', async (req, res) => {
-  try {
-    const numeracao = req.query.numeracao || null;
+app.use("/catalogo", catalogoRoutes);
 
-    const produtos = await prisma.produto.findMany({
-      where: numeracao
-        ? {
-            variacoes: {
-              some: {
-                numeracao,
-              },
-            },
-          }
-        : {},
-      select: {
-        id: true,
-        nome: true,
-        preco: true,
-        imagemUrl: true,
-        videoUrl: true,  // 🔥 agora busca do banco
-        gifUrl: true,    // 🔥 idem
-        variacoes: {
-          select: {
-            id: true,
-            numeracao: true,
-            estoque: true,
-          },
-        },
-      },
-    });
-
-    res.json(produtos);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Erro ao buscar produtos" });
-  }
-});
-
-
-// GET /catalogo/produto/:id
-catalogoRouter.get('/produto/:id', async (req, res) => {
-  try {
-    const produto = await prisma.produto.findUnique({
-      where: { id: Number(req.params.id) },
-      select: {
-        id: true,
-        nome: true,
-        preco: true,
-        precoAntigo: true,
-        imagemUrl: true,
-        videoUrl: true,
-        gifUrl: true,
-        variacoes: {
-          select: {
-            id: true,
-            numeracao: true,
-            estoque: true,
-          },
-        },
-      },
-    });
-
-    if (!produto) {
-      return res.status(404).json({ error: "Produto não encontrado" });
-    }
-
-    res.json(produto);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Erro ao buscar produto" });
-  }
-});
-
-// usa prefixo /catalogo
-app.use('/catalogo', catalogoRouter);
-
-// start
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
 });

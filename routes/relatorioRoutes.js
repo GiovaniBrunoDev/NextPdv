@@ -1,5 +1,6 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
+const { requireRole } = require("../middlewares/auth");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -65,13 +66,16 @@ function calcularVenda(venda) {
   };
 }
 
-router.get("/lucro", async (req, res) => {
+router.get("/lucro", requireRole("admin", "gerente"), async (req, res) => {
   const { periodo = "mes", inicio, fim } = req.query;
 
   try {
     const data = intervaloPorPeriodo(periodo, inicio, fim);
     const vendas = await prisma.venda.findMany({
-      where: data ? { data } : {},
+      where: {
+        lojaId: req.loja.id,
+        ...(data ? { data } : {}),
+      },
       orderBy: { data: "desc" },
       include: {
         cliente: { select: { nome: true } },

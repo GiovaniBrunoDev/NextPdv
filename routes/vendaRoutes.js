@@ -1,6 +1,8 @@
 const express = require("express");
-const router = express.Router();
 const { PrismaClient } = require("@prisma/client");
+const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
+
+const router = express.Router();
 const prisma = new PrismaClient();
 
 const vendaInclude = {
@@ -28,8 +30,11 @@ const vendaInclude = {
   },
 };
 
-// POST /vendas
-router.post("/", async (req, res) => {
+function lojaId(req) {
+  return req.loja.id;
+}
+
+router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
   const {
     produtos,
     total,
@@ -48,83 +53,85 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    let enderecoFinal = endereco?.trim() || null;
+    const venda = await prisma.$transaction(async (tx) => {
+      let enderecoFinal = endereco?.trim() || null;
+      const clienteIdNumerico = clienteId ? Number(clienteId) : null;
 
-    if (clienteId) {
-      const cliente = await prisma.cliente.findUnique({
-        where: { id: clienteId },
-      });
+      if (clienteIdNumerico) {
+        const cliente = await tx.cliente.findFirst({
+          where: { id: clienteIdNumerico, lojaId: lojaId(req) },
+        });
+        if (!cliente) throw new Error("Cliente nao encontrado nesta loja.");
 
-      if (tipoEntrega === "entrega") {
-        if (!enderecoFinal) {
-          enderecoFinal = `${cliente?.endereco || ""}, ${cliente?.bairro || ""}, ${cliente?.cidade || ""} - ${cliente?.estado || ""}, ${cliente?.cep || ""}`.trim();
-        } else if (!cliente?.endereco && enderecoFinal) {
-          await prisma.cliente.update({
-            where: { id: clienteId },
-            data: {
-              endereco: enderecoFinal,
-            },
-          });
+        if (tipoEntrega === "entrega") {
+          if (!enderecoFinal) {
+            enderecoFinal = `${cliente.endereco || ""}, ${cliente.bairro || ""}, ${cliente.cidade || ""} - ${cliente.estado || ""}, ${cliente.cep || ""}`.trim();
+          } else if (!cliente.endereco && enderecoFinal) {
+            await tx.cliente.update({
+              where: { id: clienteIdNumerico },
+              data: { endereco: enderecoFinal },
+            });
+          }
         }
       }
-    }
 
-    const novaVenda = await prisma.venda.create({
-      data: {
-        total,
-        subtotalProdutos: subtotalProdutos === undefined ? null : Number(subtotalProdutos || 0),
-        desconto: desconto === undefined ? 0 : Number(desconto || 0),
-        formaPagamento,
-        tipoEntrega,
-        taxaEntrega,
-        endereco: enderecoFinal,
-        entregador,
-        clienteId,
-      },
-    });
-
-    for (const item of produtos) {
-      const variacao = await prisma.variacaoProduto.findUnique({
-        where: { id: item.variacaoProdutoId },
-        include: { produto: true },
+      const novaVenda = await tx.venda.create({
+        data: {
+          lojaId: lojaId(req),
+          total,
+          subtotalProdutos: subtotalProdutos === undefined ? null : Number(subtotalProdutos || 0),
+          desconto: desconto === undefined ? 0 : Number(desconto || 0),
+          formaPagamento,
+          tipoEntrega,
+          taxaEntrega,
+          endereco: enderecoFinal,
+          entregador,
+          clienteId: clienteIdNumerico,
+        },
       });
 
-      if (!variacao) {
-        return res.status(400).json({ error: `Variação ${item.variacaoProdutoId} não encontrada.` });
+      for (const item of produtos) {
+        const variacao = await tx.variacaoProduto.findFirst({
+          where: {
+            id: Number(item.variacaoProdutoId),
+            produto: { lojaId: lojaId(req) },
+          },
+          include: { produto: true },
+        });
+
+        if (!variacao) throw new Error(`Variacao ${item.variacaoProdutoId} nao encontrada.`);
+
+        await tx.itemVenda.create({
+          data: {
+            vendaId: novaVenda.id,
+            variacaoProdutoId: variacao.id,
+            quantidade: Number(item.quantidade),
+            precoUnitario: variacao.produto.preco,
+            custoUnitario: variacao.produto.custoUnitario,
+            outrosCustos: variacao.produto.outrosCustos,
+          },
+        });
+
+        await tx.variacaoProduto.update({
+          where: { id: variacao.id },
+          data: { estoque: { decrement: Number(item.quantidade) } },
+        });
       }
 
-      await prisma.itemVenda.create({
-        data: {
-          vendaId: novaVenda.id,
-          variacaoProdutoId: item.variacaoProdutoId,
-          quantidade: item.quantidade,
-          precoUnitario: variacao.produto.preco,
-          custoUnitario: variacao.produto.custoUnitario,
-          outrosCustos: variacao.produto.outrosCustos,
-        },
-      });
+      return tx.venda.findUnique({ where: { id: novaVenda.id }, include: vendaInclude });
+    });
 
-      await prisma.variacaoProduto.update({
-        where: { id: item.variacaoProdutoId },
-        data: {
-          estoque: {
-            decrement: item.quantidade,
-          },
-        },
-      });
-    }
-
-    return res.status(201).json({ mensagem: "Venda registrada com sucesso!", vendaId: novaVenda.id });
+    return res.status(201).json({ mensagem: "Venda registrada com sucesso!", vendaId: venda.id, venda });
   } catch (error) {
     console.error("Erro ao registrar venda:", error);
-    return res.status(500).json({ erro: "Erro ao registrar venda." });
+    return res.status(400).json({ error: error.message || "Erro ao registrar venda." });
   }
 });
 
-// GET /vendas
 router.get("/", async (req, res) => {
   try {
     const vendas = await prisma.venda.findMany({
+      where: { lojaId: lojaId(req) },
       orderBy: { data: "desc" },
       include: vendaInclude,
     });
@@ -136,22 +143,22 @@ router.get("/", async (req, res) => {
   }
 });
 
-// PUT /vendas/:id
-router.put("/:id", async (req, res) => {
-  const { id } = req.params;
-  const {
-    formaPagamento,
-    tipoEntrega,
-    taxaEntrega,
-    endereco,
-    entregador,
-    clienteId,
-  } = req.body;
+router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), async (req, res) => {
+  const vendaId = Number(req.params.id);
+  const { formaPagamento, tipoEntrega, taxaEntrega, endereco, entregador, clienteId } = req.body;
 
   try {
-    const vendaId = parseInt(id);
-    const data = {};
+    const venda = await prisma.venda.findFirst({ where: { id: vendaId, lojaId: lojaId(req) } });
+    if (!venda) return res.status(404).json({ error: "Venda nao encontrada." });
 
+    if (clienteId) {
+      const cliente = await prisma.cliente.findFirst({
+        where: { id: Number(clienteId), lojaId: lojaId(req) },
+      });
+      if (!cliente) return res.status(400).json({ error: "Cliente nao encontrado nesta loja." });
+    }
+
+    const data = {};
     if (formaPagamento !== undefined) data.formaPagamento = formaPagamento || null;
     if (tipoEntrega !== undefined) data.tipoEntrega = tipoEntrega || null;
     if (taxaEntrega !== undefined) data.taxaEntrega = taxaEntrega === "" || taxaEntrega === null ? null : Number(taxaEntrega);
@@ -159,10 +166,7 @@ router.put("/:id", async (req, res) => {
     if (entregador !== undefined) data.entregador = entregador?.trim() || null;
     if (clienteId !== undefined) data.clienteId = clienteId ? Number(clienteId) : null;
 
-    await prisma.venda.update({
-      where: { id: vendaId },
-      data,
-    });
+    await prisma.venda.update({ where: { id: vendaId }, data });
 
     const vendaAtualizada = await prisma.venda.findUnique({
       where: { id: vendaId },
@@ -176,117 +180,87 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// DELETE /vendas/:id
-router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
+router.delete("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), async (req, res) => {
+  const id = Number(req.params.id);
 
   try {
-    const venda = await prisma.venda.findUnique({
-      where: { id: parseInt(id) },
+    const venda = await prisma.venda.findFirst({
+      where: { id, lojaId: lojaId(req) },
       include: { itens: true },
     });
 
-    if (!venda) {
-      return res.status(404).json({ error: "Venda não encontrada." });
-    }
+    if (!venda) return res.status(404).json({ error: "Venda nao encontrada." });
 
-    for (const item of venda.itens) {
-      await prisma.variacaoProduto.update({
-        where: { id: item.variacaoProdutoId },
-        data: {
-          estoque: {
-            increment: item.quantidade,
-          },
-        },
-      });
-    }
+    await prisma.$transaction(async (tx) => {
+      for (const item of venda.itens) {
+        await tx.variacaoProduto.update({
+          where: { id: item.variacaoProdutoId },
+          data: { estoque: { increment: item.quantidade } },
+        });
+      }
 
-    await prisma.itemVenda.deleteMany({
-      where: { vendaId: venda.id },
+      await tx.itemVenda.deleteMany({ where: { vendaId: venda.id } });
+      await tx.venda.delete({ where: { id: venda.id } });
     });
 
-    await prisma.venda.delete({
-      where: { id: venda.id },
-    });
-
-    res.json({ mensagem: "Venda excluída com sucesso!" });
+    res.json({ mensagem: "Venda excluida com sucesso!" });
   } catch (error) {
     console.error("Erro ao excluir venda:", error);
     res.status(500).json({ error: "Erro ao excluir venda." });
   }
 });
 
-// POST /vendas/troca
-router.post("/troca", async (req, res) => {
+router.post("/troca", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
   const { vendaId, itemId, novaVariacaoId } = req.body;
 
   try {
-    const venda = await prisma.venda.findUnique({
-      where: { id: parseInt(vendaId) },
-      include: {
-        itens: true,
-      },
-    });
+    const vendaAtualizada = await prisma.$transaction(async (tx) => {
+      const venda = await tx.venda.findFirst({
+        where: { id: Number(vendaId), lojaId: lojaId(req) },
+        include: { itens: true },
+      });
+      if (!venda) throw new Error("Venda nao encontrada.");
 
-    if (!venda) {
-      return res.status(404).json({ error: "Venda não encontrada." });
-    }
+      const item = venda.itens.find((i) => i.id === Number(itemId));
+      if (!item) throw new Error("Item da venda nao encontrado.");
 
-    const item = venda.itens.find((i) => i.id === parseInt(itemId));
-    if (!item) {
-      return res.status(404).json({ error: "Item da venda não encontrado." });
-    }
-
-    await prisma.variacaoProduto.update({
-      where: { id: item.variacaoProdutoId },
-      data: {
-        estoque: {
-          increment: item.quantidade,
+      const variacaoNova = await tx.variacaoProduto.findFirst({
+        where: {
+          id: Number(novaVariacaoId),
+          produto: { lojaId: lojaId(req) },
         },
-      },
-    });
+        include: { produto: true },
+      });
+      if (!variacaoNova) throw new Error("Nova variacao nao encontrada.");
+      if (variacaoNova.estoque < item.quantidade) throw new Error("Estoque insuficiente para a nova variacao.");
 
-    const variacaoNova = await prisma.variacaoProduto.findUnique({
-      where: { id: novaVariacaoId },
-      include: { produto: true },
-    });
+      await tx.variacaoProduto.update({
+        where: { id: item.variacaoProdutoId },
+        data: { estoque: { increment: item.quantidade } },
+      });
 
-    if (!variacaoNova) {
-      return res.status(400).json({ error: "Nova variação não encontrada." });
-    }
-
-    if (variacaoNova.estoque < item.quantidade) {
-      return res.status(400).json({ error: "Estoque insuficiente para a nova variação." });
-    }
-
-    await prisma.itemVenda.update({
-      where: { id: item.id },
-      data: {
-        variacaoProdutoId: novaVariacaoId,
-        precoUnitario: item.precoUnitario ?? variacaoNova.produto.preco,
-        custoUnitario: variacaoNova.produto.custoUnitario,
-        outrosCustos: variacaoNova.produto.outrosCustos,
-      },
-    });
-
-    await prisma.variacaoProduto.update({
-      where: { id: novaVariacaoId },
-      data: {
-        estoque: {
-          decrement: item.quantidade,
+      await tx.itemVenda.update({
+        where: { id: item.id },
+        data: {
+          variacaoProdutoId: variacaoNova.id,
+          precoUnitario: item.precoUnitario ?? variacaoNova.produto.preco,
+          custoUnitario: variacaoNova.produto.custoUnitario,
+          outrosCustos: variacaoNova.produto.outrosCustos,
         },
-      },
-    });
+      });
 
-    const vendaAtualizada = await prisma.venda.findUnique({
-      where: { id: venda.id },
-      include: vendaInclude,
+      await tx.variacaoProduto.update({
+        where: { id: variacaoNova.id },
+        data: { estoque: { decrement: item.quantidade } },
+      });
+
+      return tx.venda.findUnique({ where: { id: venda.id }, include: vendaInclude });
     });
 
     res.json({ mensagem: "Troca realizada com sucesso!", venda: vendaAtualizada });
   } catch (error) {
     console.error("Erro ao realizar troca:", error);
-    res.status(500).json({ error: "Erro ao realizar troca." });
+    res.status(400).json({ error: error.message || "Erro ao realizar troca." });
   }
 });
 

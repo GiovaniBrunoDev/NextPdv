@@ -1,22 +1,17 @@
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
-// Criar cliente
+function lojaId(req) {
+  return req.loja.id;
+}
+
 async function criarCliente(req, res) {
-  const {
-    nome,
-    telefone,
-    endereco,
-    bairro,
-    cidade,
-    estado,
-    cep,
-    observacoes
-  } = req.body;
+  const { nome, telefone, endereco, bairro, cidade, estado, cep, observacoes } = req.body;
 
   try {
     const novo = await prisma.cliente.create({
       data: {
+        lojaId: lojaId(req),
         nome,
         telefone,
         endereco,
@@ -24,74 +19,60 @@ async function criarCliente(req, res) {
         cidade,
         estado,
         cep,
-        observacoes
+        observacoes,
       },
     });
     res.status(201).json(novo);
   } catch (error) {
-    res.status(400).json({ error: 'Erro ao criar cliente', detalhes: error.message });
+    res.status(400).json({ error: "Erro ao criar cliente", detalhes: error.message });
   }
 }
 
-// Listar todos os clientes
 async function listarClientes(req, res) {
   const clientes = await prisma.cliente.findMany({
-    orderBy: { nome: 'asc' }
+    where: { lojaId: lojaId(req) },
+    orderBy: { nome: "asc" },
   });
   res.json(clientes);
 }
 
-// Buscar cliente por ID
 async function buscarCliente(req, res) {
-  const { id } = req.params;
-  const cliente = await prisma.cliente.findUnique({ where: { id: Number(id) } });
+  const cliente = await prisma.cliente.findFirst({
+    where: { id: Number(req.params.id), lojaId: lojaId(req) },
+  });
 
-  if (!cliente) return res.status(404).json({ error: 'Cliente não encontrado' });
+  if (!cliente) return res.status(404).json({ error: "Cliente nao encontrado" });
   res.json(cliente);
 }
 
-// Atualizar cliente
 async function atualizarCliente(req, res) {
-  const { id } = req.params;
-  const {
-    nome,
-    telefone,
-    endereco,
-    bairro,
-    cidade,
-    estado,
-    cep,
-    observacoes
-  } = req.body;
+  const id = Number(req.params.id);
+  const { nome, telefone, endereco, bairro, cidade, estado, cep, observacoes } = req.body;
 
   try {
+    const existente = await prisma.cliente.findFirst({ where: { id, lojaId: lojaId(req) } });
+    if (!existente) return res.status(404).json({ error: "Cliente nao encontrado" });
+
     const atualizado = await prisma.cliente.update({
-      where: { id: Number(id) },
-      data: {
-        nome,
-        telefone,
-        endereco,
-        bairro,
-        cidade,
-        estado,
-        cep,
-        observacoes
-      },
+      where: { id },
+      data: { nome, telefone, endereco, bairro, cidade, estado, cep, observacoes },
     });
     res.json(atualizado);
   } catch (error) {
-    res.status(400).json({ error: 'Erro ao atualizar cliente', detalhes: error.message });
+    res.status(400).json({ error: "Erro ao atualizar cliente", detalhes: error.message });
   }
 }
 
-// Deletar cliente
 async function deletarCliente(req, res) {
-  const { id } = req.params;
+  const id = Number(req.params.id);
   try {
-    await prisma.cliente.delete({ where: { id: Number(id) } });
-    res.json({ mensagem: 'Cliente excluído com sucesso' });
+    const existente = await prisma.cliente.findFirst({ where: { id, lojaId: lojaId(req) } });
+    if (!existente) return res.status(404).json({ error: "Cliente nao encontrado" });
+
+    await prisma.cliente.delete({ where: { id } });
+    res.json({ mensagem: "Cliente excluido com sucesso" });
   } catch (error) {
-    res.status(400).json({ error: 'Erro ao deletar cliente', detalhes: error.message });
+    res.status(400).json({ error: "Erro ao deletar cliente", detalhes: error.message });
   }
 }
 

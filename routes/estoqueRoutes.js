@@ -1,5 +1,6 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
+const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -12,11 +13,16 @@ const entradaInclude = {
   },
 };
 
+function lojaId(req) {
+  return req.loja.id;
+}
+
 router.get("/entradas", async (req, res) => {
   const limite = Math.min(Number(req.query.limite || 50), 200);
 
   try {
     const entradas = await prisma.entradaEstoque.findMany({
+      where: { lojaId: lojaId(req) },
       take: limite,
       orderBy: { criadoEm: "desc" },
       include: entradaInclude,
@@ -29,60 +35,43 @@ router.get("/entradas", async (req, res) => {
   }
 });
 
-router.post("/entradas", async (req, res) => {
-  const {
-    variacaoProdutoId,
-    quantidade,
-    custoUnitario,
-    outrosCustos,
-    fornecedor,
-    observacao,
-    atualizarCustosProduto,
-  } = req.body;
-
+router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"), async (req, res) => {
+  const { variacaoProdutoId, quantidade, custoUnitario, outrosCustos, fornecedor, observacao, atualizarCustosProduto } = req.body;
   const variacaoId = Number(variacaoProdutoId);
   const quantidadeEntrada = Number(quantidade);
 
   if (!variacaoId || !Number.isInteger(quantidadeEntrada) || quantidadeEntrada <= 0) {
-    return res.status(400).json({ error: "Informe uma variação e uma quantidade válida." });
+    return res.status(400).json({ error: "Informe uma variacao e uma quantidade valida." });
   }
 
   try {
     const entrada = await prisma.$transaction(async (tx) => {
-      const variacao = await tx.variacaoProduto.findUnique({
-        where: { id: variacaoId },
+      const variacao = await tx.variacaoProduto.findFirst({
+        where: { id: variacaoId, produto: { lojaId: lojaId(req) } },
         include: { produto: true },
       });
-
-      if (!variacao) throw new Error("Variação não encontrada.");
+      if (!variacao) throw new Error("Variacao nao encontrada.");
 
       const custo = custoUnitario === "" || custoUnitario === undefined ? null : Number(custoUnitario);
       const outros = outrosCustos === "" || outrosCustos === undefined ? null : Number(outrosCustos);
 
       await tx.variacaoProduto.update({
         where: { id: variacaoId },
-        data: {
-          estoque: {
-            increment: quantidadeEntrada,
-          },
-        },
+        data: { estoque: { increment: quantidadeEntrada } },
       });
 
       if (atualizarCustosProduto) {
         const dataProduto = {};
         if (custo !== null && !Number.isNaN(custo)) dataProduto.custoUnitario = custo;
         if (outros !== null && !Number.isNaN(outros)) dataProduto.outrosCustos = outros;
-
         if (Object.keys(dataProduto).length > 0) {
-          await tx.produto.update({
-            where: { id: variacao.produtoId },
-            data: dataProduto,
-          });
+          await tx.produto.update({ where: { id: variacao.produtoId }, data: dataProduto });
         }
       }
 
       return tx.entradaEstoque.create({
         data: {
+          lojaId: lojaId(req),
           variacaoProdutoId: variacaoId,
           quantidade: quantidadeEntrada,
           custoUnitario: custo,
@@ -101,17 +90,8 @@ router.post("/entradas", async (req, res) => {
   }
 });
 
-router.post("/entradas/grade", async (req, res) => {
-  const {
-    produtoId,
-    itens,
-    custoUnitario,
-    outrosCustos,
-    fornecedor,
-    observacao,
-    atualizarCustosProduto,
-  } = req.body;
-
+router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "gerente"), async (req, res) => {
+  const { produtoId, itens, custoUnitario, outrosCustos, fornecedor, observacao, atualizarCustosProduto } = req.body;
   const produtoIdNumerico = Number(produtoId);
   const itensNormalizados = Array.isArray(itens)
     ? itens
@@ -122,6 +102,7 @@ router.post("/entradas/grade", async (req, res) => {
         }))
         .filter((item) => item.numeracao && Number.isInteger(item.quantidade) && item.quantidade > 0)
     : [];
+
   const itensValidos = Object.values(
     itensNormalizados.reduce((acc, item) => {
       const chave = item.numeracao;
@@ -132,17 +113,16 @@ router.post("/entradas/grade", async (req, res) => {
   );
 
   if (!produtoIdNumerico || itensValidos.length === 0) {
-    return res.status(400).json({ error: "Informe o produto e ao menos uma numeração com quantidade." });
+    return res.status(400).json({ error: "Informe o produto e ao menos uma numeracao com quantidade." });
   }
 
   try {
     const entradas = await prisma.$transaction(async (tx) => {
-      const produto = await tx.produto.findUnique({
-        where: { id: produtoIdNumerico },
+      const produto = await tx.produto.findFirst({
+        where: { id: produtoIdNumerico, lojaId: lojaId(req) },
         include: { variacoes: true },
       });
-
-      if (!produto) throw new Error("Produto não encontrado.");
+      if (!produto) throw new Error("Produto nao encontrado.");
 
       const custo = custoUnitario === "" || custoUnitario === undefined ? null : Number(custoUnitario);
       const outros = outrosCustos === "" || outrosCustos === undefined ? null : Number(outrosCustos);
@@ -151,72 +131,56 @@ router.post("/entradas/grade", async (req, res) => {
         const dataProduto = {};
         if (custo !== null && !Number.isNaN(custo)) dataProduto.custoUnitario = custo;
         if (outros !== null && !Number.isNaN(outros)) dataProduto.outrosCustos = outros;
-
         if (Object.keys(dataProduto).length > 0) {
-          await tx.produto.update({
-            where: { id: produtoIdNumerico },
-            data: dataProduto,
-          });
+          await tx.produto.update({ where: { id: produtoIdNumerico }, data: dataProduto });
         }
       }
 
       const entradasCriadas = [];
-
       for (const item of itensValidos) {
         let variacao = item.variacaoProdutoId
-          ? await tx.variacaoProduto.findUnique({ where: { id: item.variacaoProdutoId } })
+          ? await tx.variacaoProduto.findFirst({
+              where: { id: item.variacaoProdutoId, produto: { lojaId: lojaId(req) } },
+            })
           : null;
 
         if (!variacao) {
           variacao = await tx.variacaoProduto.findFirst({
-            where: {
-              produtoId: produtoIdNumerico,
-              numeracao: item.numeracao,
-            },
+            where: { produtoId: produtoIdNumerico, numeracao: item.numeracao },
           });
         }
 
         if (!variacao) {
           variacao = await tx.variacaoProduto.create({
-            data: {
-              produtoId: produtoIdNumerico,
-              numeracao: item.numeracao,
-              estoque: 0,
-            },
+            data: { produtoId: produtoIdNumerico, numeracao: item.numeracao, estoque: 0 },
           });
         }
 
         await tx.variacaoProduto.update({
           where: { id: variacao.id },
-          data: {
-            estoque: {
-              increment: item.quantidade,
+          data: { estoque: { increment: item.quantidade } },
+        });
+
+        entradasCriadas.push(
+          await tx.entradaEstoque.create({
+            data: {
+              lojaId: lojaId(req),
+              variacaoProdutoId: variacao.id,
+              quantidade: item.quantidade,
+              custoUnitario: custo,
+              outrosCustos: outros,
+              fornecedor: fornecedor?.trim() || null,
+              observacao: observacao?.trim() || null,
             },
-          },
-        });
-
-        const entrada = await tx.entradaEstoque.create({
-          data: {
-            variacaoProdutoId: variacao.id,
-            quantidade: item.quantidade,
-            custoUnitario: custo,
-            outrosCustos: outros,
-            fornecedor: fornecedor?.trim() || null,
-            observacao: observacao?.trim() || null,
-          },
-          include: entradaInclude,
-        });
-
-        entradasCriadas.push(entrada);
+            include: entradaInclude,
+          })
+        );
       }
 
       return entradasCriadas;
     });
 
-    res.status(201).json({
-      mensagem: "Entrada por grade registrada com sucesso.",
-      entradas,
-    });
+    res.status(201).json({ mensagem: "Entrada por grade registrada com sucesso.", entradas });
   } catch (error) {
     console.error("Erro ao registrar entrada por grade:", error);
     res.status(400).json({ error: error.message || "Erro ao registrar entrada por grade." });
