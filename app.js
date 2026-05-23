@@ -15,8 +15,16 @@ const relatorioRoutes = require("./routes/relatorioRoutes");
 const estoqueRoutes = require("./routes/estoqueRoutes");
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
-const catalogoRoutes = require("./routes/catalogoRoutes");
 const { authRequired, lojaRequired } = require("./middlewares/auth");
+
+const catalogoRouter = express.Router();
+catalogoRouter.get("/produtos", (req, res) => {
+  res.status(410).json({ error: "Catalogo publico desativado na versao multi-loja." });
+});
+catalogoRouter.get("/produto/:id", (req, res) => {
+  res.status(410).json({ error: "Catalogo publico desativado na versao multi-loja." });
+});
+app.use("/catalogo", catalogoRouter);
 
 app.use(cors());
 app.use(express.json());
@@ -39,7 +47,7 @@ app.use("/relatorios", authRequired, lojaRequired, relatorioRoutes);
 app.use("/estoque", authRequired, lojaRequired, estoqueRoutes);
 app.use(authRequired, lojaRequired, uploadVideoRoute);
 
-app.use("/catalogo", catalogoRoutes);
+
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);
