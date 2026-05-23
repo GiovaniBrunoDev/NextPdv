@@ -8,6 +8,8 @@ const PORT = 3001;
 
 const prisma = new PrismaClient();
 
+const LOJA_PRINCIPAL_ID = 1;
+
 // rotas do PDV
 const produtoRoutes = require('./routes/produtoRoutes');
 const vendaRoutes = require('./routes/vendaRoutes');
@@ -41,28 +43,24 @@ app.use(uploadVideoRoute);
 // Catálogo
 const catalogoRouter = express.Router();
 
-const LOJA_PRINCIPAL_ID = 1;
-
 // GET /catalogo/produtos?numeracao=NN
 catalogoRouter.get('/produtos', async (req, res) => {
   try {
     const numeracao = req.query.numeracao || null;
 
-    const where = {
-      lojaId: LOJA_PRINCIPAL_ID,
-    };
-
-    if (numeracao) {
-      where.variacoes = {
-        some: {
-          numeracao,
-          estoque: { gt: 0 },
-        },
-      };
-    }
-
     const produtos = await prisma.produto.findMany({
-      where,
+      where: numeracao
+        ? {
+            lojaId: LOJA_PRINCIPAL_ID,
+            variacoes: {
+              some: {
+                numeracao,
+              },
+            },
+          }
+        : {
+            lojaId: LOJA_PRINCIPAL_ID,
+          },
       select: {
         id: true,
         nome: true,
@@ -77,9 +75,6 @@ catalogoRouter.get('/produtos', async (req, res) => {
             estoque: true,
           },
         },
-      },
-      orderBy: {
-        id: 'desc',
       },
     });
 
