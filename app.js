@@ -41,28 +41,35 @@ app.use(uploadVideoRoute);
 // Catálogo
 const catalogoRouter = express.Router();
 
+const LOJA_PRINCIPAL_ID = 1;
+
 // GET /catalogo/produtos?numeracao=NN
 catalogoRouter.get('/produtos', async (req, res) => {
   try {
     const numeracao = req.query.numeracao || null;
 
+    const where = {
+      lojaId: LOJA_PRINCIPAL_ID,
+    };
+
+    if (numeracao) {
+      where.variacoes = {
+        some: {
+          numeracao,
+          estoque: { gt: 0 },
+        },
+      };
+    }
+
     const produtos = await prisma.produto.findMany({
-      where: numeracao
-        ? {
-            variacoes: {
-              some: {
-                numeracao,
-              },
-            },
-          }
-        : {},
+      where,
       select: {
         id: true,
         nome: true,
         preco: true,
         imagemUrl: true,
-        videoUrl: true,  // 🔥 agora busca do banco
-        gifUrl: true,    // 🔥 idem
+        videoUrl: true,
+        gifUrl: true,
         variacoes: {
           select: {
             id: true,
@@ -70,6 +77,9 @@ catalogoRouter.get('/produtos', async (req, res) => {
             estoque: true,
           },
         },
+      },
+      orderBy: {
+        id: 'desc',
       },
     });
 
@@ -80,17 +90,18 @@ catalogoRouter.get('/produtos', async (req, res) => {
   }
 });
 
-
 // GET /catalogo/produto/:id
 catalogoRouter.get('/produto/:id', async (req, res) => {
   try {
-    const produto = await prisma.produto.findUnique({
-      where: { id: Number(req.params.id) },
+    const produto = await prisma.produto.findFirst({
+      where: {
+        id: Number(req.params.id),
+        lojaId: LOJA_PRINCIPAL_ID,
+      },
       select: {
         id: true,
         nome: true,
         preco: true,
-        precoAntigo: true,
         imagemUrl: true,
         videoUrl: true,
         gifUrl: true,
