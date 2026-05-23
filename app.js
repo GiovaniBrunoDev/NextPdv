@@ -1,9 +1,11 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const { PrismaClient } = require("@prisma/client");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const prisma = new PrismaClient();
 
 const produtoRoutes = require("./routes/produtoRoutes");
 const vendaRoutes = require("./routes/vendaRoutes");
@@ -17,17 +19,78 @@ const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const { authRequired, lojaRequired } = require("./middlewares/auth");
 
-const catalogoRouter = express.Router();
-catalogoRouter.get("/produtos", (req, res) => {
-  res.status(410).json({ error: "Catalogo publico desativado na versao multi-loja." });
-});
-catalogoRouter.get("/produto/:id", (req, res) => {
-  res.status(410).json({ error: "Catalogo publico desativado na versao multi-loja." });
-});
-app.use("/catalogo", catalogoRouter);
-
 app.use(cors());
 app.use(express.json());
+
+const catalogoRouter = express.Router();
+const CATALOGO_LOJA_ID = Number(process.env.CATALOGO_LOJA_ID || 1);
+
+const catalogoSelect = {
+  id: true,
+  nome: true,
+  preco: true,
+  imagemUrl: true,
+  videoUrl: true,
+  gifUrl: true,
+  variacoes: {
+    select: {
+      id: true,
+      numeracao: true,
+      estoque: true,
+    },
+  },
+};
+
+catalogoRouter.get("/produtos", async (req, res) => {
+  try {
+    const numeracao = req.query.numeracao ? String(req.query.numeracao) : null;
+
+    const produtos = await prisma.produto.findMany({
+      where: {
+        lojaId: CATALOGO_LOJA_ID,
+        ...(numeracao
+          ? {
+              variacoes: {
+                some: {
+                  numeracao,
+                  estoque: { gt: 0 },
+                },
+              },
+            }
+          : {}),
+      },
+      select: catalogoSelect,
+      orderBy: { nome: "asc" },
+    });
+
+    res.json(produtos);
+  } catch (error) {
+    console.error("Erro ao carregar catalogo:", error);
+    res.status(500).json({ error: "Erro ao carregar catalogo." });
+  }
+});
+
+catalogoRouter.get("/produto/:id", async (req, res) => {
+  try {
+    const produto = await prisma.produto.findFirst({
+      where: {
+        id: Number(req.params.id),
+        lojaId: CATALOGO_LOJA_ID,
+      },
+      select: catalogoSelect,
+    });
+
+    if (!produto) {
+      return res.status(404).json({ error: "Produto nao encontrado." });
+    }
+
+    res.json(produto);
+  } catch (error) {
+    console.error("Erro ao carregar produto do catalogo:", error);
+    res.status(500).json({ error: "Erro ao carregar produto." });
+  }
+});
+app.use("/catalogo", catalogoRouter);
 
 app.get("/", (req, res) => {
   res.send("Servidor PDV multi-loja esta funcionando.");
