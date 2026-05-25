@@ -20,6 +20,7 @@ const uploadVideoRoute = require("./routes/uploadVideo");
 const relatorioRoutes = require("./routes/relatorioRoutes");
 const estoqueRoutes = require("./routes/estoqueRoutes");
 const caixaRoutes = require("./routes/caixaRoutes");
+const financeiroRoutes = require("./routes/financeiroRoutes");
 const fornecedorRoutes = require("./routes/fornecedorRoutes");
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
@@ -46,6 +47,7 @@ app.use("/pedidos", authRequired, lojaRequired, pedidosRoutes);
 app.use("/relatorios", authRequired, lojaRequired, relatorioRoutes);
 app.use("/estoque", authRequired, lojaRequired, estoqueRoutes);
 app.use("/caixa", authRequired, lojaRequired, caixaRoutes);
+app.use("/financeiro", authRequired, lojaRequired, financeiroRoutes);
 app.use("/fornecedores", authRequired, lojaRequired, fornecedorRoutes);
 
 // Catálogo

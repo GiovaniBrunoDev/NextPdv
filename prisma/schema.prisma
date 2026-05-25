@@ -23,6 +23,7 @@ model Loja {
   fornecedores Fornecedor[]
   caixas       Caixa[]
   movimentosCaixa MovimentoCaixa[]
+  lancamentosFinanceiros LancamentoFinanceiro[]
   membros      MembroLoja[]
   assinatura   Assinatura?
   convites     ConviteLoja[]
@@ -238,7 +239,32 @@ model Cliente {
   observacoes String?
   vendas      Venda[]
   pedidos     Pedido[]
+  lancamentosFinanceiros LancamentoFinanceiro[]
   loja        Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+}
+
+model LancamentoFinanceiro {
+  id             Int      @id @default(autoincrement())
+  lojaId         Int
+  clienteId      Int?
+  tipo           String
+  origem         String   @default("manual")
+  categoria      String
+  descricao      String
+  valor          Float
+  formaPagamento String?
+  status         String   @default("pago")
+  data           DateTime @default(now())
+  vencimento     DateTime?
+  pagoEm         DateTime?
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+  loja           Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  cliente        Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+
+  @@index([lojaId, data])
+  @@index([lojaId, status, vencimento])
+  @@index([clienteId])
 }
 
 model EntradaEstoque {
