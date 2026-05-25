@@ -12,6 +12,7 @@ router.patch('/variacoes/:id', assinaturaAtivaRequired, requireRole("admin", "ge
 router.delete("/variacoes/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), produtoController.deletarVariacao);
 router.post('/:id/variacoes', assinaturaAtivaRequired, requireRole("admin", "gerente"), produtoController.adicionarVariacao);
 router.post('/upload', assinaturaAtivaRequired, requireRole("admin", "gerente"), produtoController.uploadImagem, produtoController.fazerUploadImagem);
+router.get('/:id/imagem-download', produtoController.baixarImagemProduto);
 router.get('/:id', produtoController.buscarProduto);
 
 

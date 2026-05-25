@@ -18,6 +18,10 @@ function normalizarGenero(genero) {
   return ["feminino", "masculino", "unissex"].includes(genero) ? genero : "unissex";
 }
 
+function urlAbsoluta(valor) {
+  return /^https?:\/\//i.test(String(valor || ""));
+}
+
 async function validarFornecedorDaLoja(fornecedorId, loja) {
   if (fornecedorId === null || fornecedorId === undefined || fornecedorId === "") return null;
 
@@ -33,12 +37,53 @@ async function validarFornecedorDaLoja(fornecedorId, loja) {
 }
 
 function imagemCompleta(req, produto) {
+  const imagemUrl = produto.imagemUrl || null;
+
   return {
     ...produto,
-    imagemUrlCompleta: produto.imagemUrl
-      ? `${req.protocol}://${req.get("host")}${produto.imagemUrl}`
-      : null,
+    imagemUrlCompleta: imagemUrl && !urlAbsoluta(imagemUrl)
+      ? `${req.protocol}://${req.get("host")}${imagemUrl}`
+      : imagemUrl,
   };
+}
+
+async function baixarImagemProduto(req, res) {
+  try {
+    const produto = await prisma.produto.findFirst({
+      where: { id: Number(req.params.id), lojaId: lojaId(req) },
+      select: { id: true, imagemUrl: true },
+    });
+
+    if (!produto) return res.status(404).json({ error: "Produto nao encontrado." });
+    if (!produto.imagemUrl) return res.status(404).json({ error: "Produto sem imagem." });
+
+    if (urlAbsoluta(produto.imagemUrl)) {
+      const resposta = await fetch(produto.imagemUrl);
+      if (!resposta.ok) return res.status(502).json({ error: "Nao foi possivel baixar a imagem." });
+
+      const contentType = resposta.headers.get("content-type") || "image/jpeg";
+      const buffer = Buffer.from(await resposta.arrayBuffer());
+
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "private, max-age=300");
+      return res.send(buffer);
+    }
+
+    const uploadsRoot = path.resolve(__dirname, "../uploads");
+    const caminhoRelativo = produto.imagemUrl.replace(/^\/+/, "");
+    const caminhoImagem = path.resolve(__dirname, "..", caminhoRelativo);
+    const relativoUploads = path.relative(uploadsRoot, caminhoImagem);
+
+    if (relativoUploads.startsWith("..") || path.isAbsolute(relativoUploads) || !fs.existsSync(caminhoImagem)) {
+      return res.status(404).json({ error: "Imagem nao encontrada." });
+    }
+
+    res.setHeader("Cache-Control", "private, max-age=300");
+    return res.sendFile(caminhoImagem);
+  } catch (error) {
+    console.error("Erro ao baixar imagem do produto:", error);
+    return res.status(500).json({ error: "Erro ao baixar imagem", detalhes: error.message });
+  }
 }
 
 async function buscarProdutos(req, res) {
@@ -285,6 +330,7 @@ module.exports = {
   atualizarEstoqueVariacao,
   deletarVariacao,
   adicionarVariacao,
+  baixarImagemProduto,
   uploadImagem,
   fazerUploadImagem,
   prisma,
