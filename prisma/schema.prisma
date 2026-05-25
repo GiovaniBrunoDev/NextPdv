@@ -20,6 +20,9 @@ model Loja {
   pedidos      Pedido[]
   metas        Meta[]
   entradas     EntradaEstoque[]
+  fornecedores Fornecedor[]
+  caixas       Caixa[]
+  movimentosCaixa MovimentoCaixa[]
   membros      MembroLoja[]
   assinatura   Assinatura?
   convites     ConviteLoja[]
@@ -36,6 +39,9 @@ model Usuario {
   atualizadoEm DateTime      @updatedAt
   membros      MembroLoja[]
   convites     ConviteLoja[]
+  caixasAbertos Caixa[]       @relation("CaixaAbertoPor")
+  caixasFechados Caixa[]      @relation("CaixaFechadoPor")
+  movimentosCaixaCriados MovimentoCaixa[] @relation("MovimentoCaixaCriadoPor")
 }
 
 model MembroLoja {
@@ -100,7 +106,10 @@ model ConviteLoja {
 model Produto {
   id            Int               @id @default(autoincrement())
   lojaId        Int
+  fornecedorId  Int?
   nome          String
+  marca         String?
+  genero        String            @default("unissex")
   preco         Float
   custoUnitario Float
   outrosCustos  Float
@@ -109,6 +118,23 @@ model Produto {
   gifUrl        String?
   variacoes     VariacaoProduto[]
   loja          Loja              @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  fornecedor    Fornecedor?       @relation(fields: [fornecedorId], references: [id], onDelete: SetNull)
+}
+
+model Fornecedor {
+  id           Int       @id @default(autoincrement())
+  lojaId       Int
+  nome         String
+  telefone     String?
+  observacao   String?
+  ativo        Boolean   @default(true)
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+  loja         Loja      @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  produtos     Produto[]
+
+  @@unique([lojaId, nome])
+  @@index([lojaId, ativo])
 }
 
 model VariacaoProduto {
@@ -125,12 +151,14 @@ model VariacaoProduto {
 model ItemVenda {
   id                Int             @id @default(autoincrement())
   vendaId           Int
-  variacaoProdutoId Int
+  variacaoProdutoId Int?
+  nomeManual        String?
+  numeracaoManual   String?
   quantidade        Int
   precoUnitario     Float?
   custoUnitario     Float?
   outrosCustos      Float?
-  variacaoProduto   VariacaoProduto @relation(fields: [variacaoProdutoId], references: [id])
+  variacaoProduto   VariacaoProduto? @relation(fields: [variacaoProdutoId], references: [id], onDelete: SetNull)
   venda             Venda           @relation(fields: [vendaId], references: [id])
 }
 
@@ -148,8 +176,53 @@ model Venda {
   endereco         String?
   clienteId        Int?
   itens            ItemVenda[]
+  movimentosCaixa  MovimentoCaixa[]
   cliente          Cliente?    @relation(fields: [clienteId], references: [id])
   loja             Loja        @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+}
+
+model Caixa {
+  id                  Int               @id @default(autoincrement())
+  lojaId              Int
+  abertoPorId         Int?
+  fechadoPorId        Int?
+  status              String            @default("aberto")
+  valorInicial        Float             @default(0)
+  valorFinalInformado Float?
+  valorFinalCalculado Float?
+  diferenca           Float?
+  observacaoAbertura  String?
+  observacaoFechamento String?
+  abertoEm            DateTime          @default(now())
+  fechadoEm           DateTime?
+  loja                Loja              @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  abertoPor           Usuario?          @relation("CaixaAbertoPor", fields: [abertoPorId], references: [id], onDelete: SetNull)
+  fechadoPor          Usuario?          @relation("CaixaFechadoPor", fields: [fechadoPorId], references: [id], onDelete: SetNull)
+  movimentos          MovimentoCaixa[]
+
+  @@index([lojaId, status])
+  @@index([abertoEm])
+}
+
+model MovimentoCaixa {
+  id             Int      @id @default(autoincrement())
+  lojaId         Int
+  caixaId        Int
+  vendaId        Int?
+  criadoPorId    Int?
+  tipo           String
+  descricao      String
+  valor          Float
+  formaPagamento String?
+  criadoEm       DateTime @default(now())
+  loja           Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  caixa          Caixa    @relation(fields: [caixaId], references: [id], onDelete: Cascade)
+  venda          Venda?   @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+  criadoPor      Usuario? @relation("MovimentoCaixaCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([lojaId, criadoEm])
+  @@index([caixaId, tipo])
+  @@index([vendaId])
 }
 
 model Cliente {

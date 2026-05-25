@@ -1,6 +1,7 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
 const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
+const { registrarVendaNoCaixa } = require("../services/caixaService");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -32,6 +33,17 @@ const vendaInclude = {
 
 function lojaId(req) {
   return req.loja.id;
+}
+
+function numeroValido(valor, fallback = 0) {
+  const numero = Number(valor ?? fallback);
+  return Number.isFinite(numero) ? numero : fallback;
+}
+
+function itemManual(item) {
+  if (item.manual || item.tipo === "manual") return true;
+  if (item.variacaoProdutoId === null || item.variacaoProdutoId === undefined) return true;
+  return String(item.variacaoProdutoId).startsWith("manual-");
 }
 
 router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
@@ -91,6 +103,38 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
       });
 
       for (const item of produtos) {
+        const quantidade = numeroValido(item.quantidade);
+        if (!Number.isInteger(quantidade) || quantidade <= 0) {
+          throw new Error("Quantidade invalida em um item da venda.");
+        }
+
+        if (itemManual(item)) {
+          const nomeManual = String(item.nome || item.nomeManual || "").trim();
+          const numeracaoManual = String(item.numeracao || item.numeracaoManual || "").trim() || null;
+          const precoUnitario = numeroValido(item.precoUnitario ?? item.preco ?? item.valorVenda);
+          const custoUnitario = numeroValido(item.custoUnitario ?? item.valorCusto);
+          const outrosCustos = numeroValido(item.outrosCustos);
+
+          if (!nomeManual) throw new Error("Informe o nome do item fora de estoque.");
+          if (precoUnitario <= 0) throw new Error(`Informe o valor de venda do item "${nomeManual}".`);
+          if (custoUnitario < 0 || outrosCustos < 0) throw new Error(`Informe custos validos para "${nomeManual}".`);
+
+          await tx.itemVenda.create({
+            data: {
+              vendaId: novaVenda.id,
+              variacaoProdutoId: null,
+              nomeManual,
+              numeracaoManual,
+              quantidade,
+              precoUnitario,
+              custoUnitario,
+              outrosCustos,
+            },
+          });
+
+          continue;
+        }
+
         const variacao = await tx.variacaoProduto.findFirst({
           where: {
             id: Number(item.variacaoProdutoId),
@@ -105,7 +149,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
           data: {
             vendaId: novaVenda.id,
             variacaoProdutoId: variacao.id,
-            quantidade: Number(item.quantidade),
+            quantidade,
             precoUnitario: variacao.produto.preco,
             custoUnitario: variacao.produto.custoUnitario,
             outrosCustos: variacao.produto.outrosCustos,
@@ -114,9 +158,17 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
 
         await tx.variacaoProduto.update({
           where: { id: variacao.id },
-          data: { estoque: { decrement: Number(item.quantidade) } },
+          data: { estoque: { decrement: quantidade } },
         });
       }
+
+      await registrarVendaNoCaixa(tx, {
+        lojaId: lojaId(req),
+        usuarioId: req.usuario?.id,
+        vendaId: novaVenda.id,
+        total: novaVenda.total,
+        formaPagamento,
+      });
 
       return tx.venda.findUnique({ where: { id: novaVenda.id }, include: vendaInclude });
     });
@@ -193,6 +245,8 @@ router.delete("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), 
 
     await prisma.$transaction(async (tx) => {
       for (const item of venda.itens) {
+        if (!item.variacaoProdutoId) continue;
+
         await tx.variacaoProduto.update({
           where: { id: item.variacaoProdutoId },
           data: { estoque: { increment: item.quantidade } },
@@ -223,6 +277,7 @@ router.post("/troca", assinaturaAtivaRequired, requireRole("admin", "gerente", "
 
       const item = venda.itens.find((i) => i.id === Number(itemId));
       if (!item) throw new Error("Item da venda nao encontrado.");
+      if (!item.variacaoProdutoId) throw new Error("Item fora de estoque nao pode ser trocado pelo controle de estoque.");
 
       const variacaoNova = await tx.variacaoProduto.findFirst({
         where: {

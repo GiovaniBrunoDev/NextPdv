@@ -11,7 +11,25 @@ function lojaId(req) {
 }
 
 function produtoInclude() {
-  return { variacoes: true };
+  return { variacoes: true, fornecedor: true };
+}
+
+function normalizarGenero(genero) {
+  return ["feminino", "masculino", "unissex"].includes(genero) ? genero : "unissex";
+}
+
+async function validarFornecedorDaLoja(fornecedorId, loja) {
+  if (fornecedorId === null || fornecedorId === undefined || fornecedorId === "") return null;
+
+  const id = Number(fornecedorId);
+  if (!id) throw new Error("Fornecedor invalido.");
+
+  const fornecedor = await prisma.fornecedor.findFirst({
+    where: { id, lojaId: loja, ativo: true },
+  });
+
+  if (!fornecedor) throw new Error("Fornecedor nao encontrado nesta loja.");
+  return fornecedor.id;
 }
 
 function imagemCompleta(req, produto) {
@@ -58,6 +76,9 @@ async function buscarProduto(req, res) {
 async function criarProduto(req, res) {
   const {
     nome,
+    marca,
+    genero,
+    fornecedorId,
     preco,
     custoUnitario,
     imagemUrl,
@@ -70,10 +91,15 @@ async function criarProduto(req, res) {
   const gifUrlFinal = gifUrl || findGifByVideoUrl(videoUrl);
 
   try {
+    const fornecedorValidoId = await validarFornecedorDaLoja(fornecedorId, lojaId(req));
+
     const novo = await prisma.produto.create({
       data: {
         lojaId: lojaId(req),
+        fornecedorId: fornecedorValidoId,
         nome,
+        marca: marca?.trim() || null,
+        genero: normalizarGenero(genero),
         preco: Number(preco || 0),
         custoUnitario: Number(custoUnitario || 0),
         imagemUrl,
@@ -116,6 +142,9 @@ async function atualizarProduto(req, res) {
   const id = Number(req.params.id);
   const {
     nome,
+    marca,
+    genero,
+    fornecedorId,
     preco,
     custoUnitario,
     outrosCustos,
@@ -124,21 +153,24 @@ async function atualizarProduto(req, res) {
     gifUrl,
   } = req.body;
 
-  const produto = await prisma.produto.findFirst({ where: { id, lojaId: lojaId(req) } });
-  if (!produto) return res.status(404).json({ error: "Produto nao encontrado." });
-
-  const data = {};
-  if (nome !== undefined) data.nome = nome;
-  if (preco !== undefined) data.preco = Number(preco);
-  if (custoUnitario !== undefined) data.custoUnitario = Number(custoUnitario);
-  if (outrosCustos !== undefined) data.outrosCustos = Number(outrosCustos);
-  if (imagemUrl !== undefined) data.imagemUrl = imagemUrl;
-  if (videoUrl !== undefined) data.videoUrl = videoUrl;
-  if (gifUrl !== undefined || videoUrl !== undefined) {
-    data.gifUrl = gifUrl || findGifByVideoUrl(videoUrl);
-  }
-
   try {
+    const produto = await prisma.produto.findFirst({ where: { id, lojaId: lojaId(req) } });
+    if (!produto) return res.status(404).json({ error: "Produto nao encontrado." });
+
+    const data = {};
+    if (nome !== undefined) data.nome = nome;
+    if (marca !== undefined) data.marca = marca?.trim() || null;
+    if (genero !== undefined) data.genero = normalizarGenero(genero);
+    if (fornecedorId !== undefined) data.fornecedorId = await validarFornecedorDaLoja(fornecedorId, lojaId(req));
+    if (preco !== undefined) data.preco = Number(preco);
+    if (custoUnitario !== undefined) data.custoUnitario = Number(custoUnitario);
+    if (outrosCustos !== undefined) data.outrosCustos = Number(outrosCustos);
+    if (imagemUrl !== undefined) data.imagemUrl = imagemUrl;
+    if (videoUrl !== undefined) data.videoUrl = videoUrl;
+    if (gifUrl !== undefined || videoUrl !== undefined) {
+      data.gifUrl = gifUrl || findGifByVideoUrl(videoUrl);
+    }
+
     const atualizado = await prisma.produto.update({
       where: { id },
       data,

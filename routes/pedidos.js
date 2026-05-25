@@ -1,6 +1,7 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
 const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
+const { registrarVendaNoCaixa } = require("../services/caixaService");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -262,6 +263,14 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
           },
         },
         include: includeVendaCompleta(),
+      });
+
+      await registrarVendaNoCaixa(tx, {
+        lojaId: lojaId(req),
+        usuarioId: req.usuario?.id,
+        vendaId: novaVenda.id,
+        total: novaVenda.total,
+        formaPagamento: novaVenda.formaPagamento,
       });
 
       await tx.itemPedido.deleteMany({ where: { pedidoId: pedido.id } });
