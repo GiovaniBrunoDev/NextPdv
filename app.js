@@ -22,6 +22,7 @@ const estoqueRoutes = require("./routes/estoqueRoutes");
 const caixaRoutes = require("./routes/caixaRoutes");
 const financeiroRoutes = require("./routes/financeiroRoutes");
 const fornecedorRoutes = require("./routes/fornecedorRoutes");
+const entregadorRoutes = require("./routes/entregadorRoutes");
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const { authRequired, lojaRequired } = require("./middlewares/auth");
@@ -49,6 +50,7 @@ app.use("/estoque", authRequired, lojaRequired, estoqueRoutes);
 app.use("/caixa", authRequired, lojaRequired, caixaRoutes);
 app.use("/financeiro", authRequired, lojaRequired, financeiroRoutes);
 app.use("/fornecedores", authRequired, lojaRequired, fornecedorRoutes);
+app.use("/entregadores", authRequired, lojaRequired, entregadorRoutes);
 
 // Catálogo
 const catalogoRouter = express.Router();

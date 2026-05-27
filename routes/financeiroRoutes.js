@@ -10,18 +10,56 @@ function lojaId(req) {
 }
 
 function numero(valor, fallback = 0) {
+  if (typeof valor === "string") {
+    const limpo = valor.trim();
+    if (!limpo) return fallback;
+
+    let normalizado = limpo.replace(/[^\d,.-]/g, "");
+    const ultimaVirgula = normalizado.lastIndexOf(",");
+    const ultimoPonto = normalizado.lastIndexOf(".");
+
+    if (ultimaVirgula >= 0 && ultimoPonto >= 0) {
+      normalizado =
+        ultimaVirgula > ultimoPonto
+          ? normalizado.replace(/\./g, "").replace(",", ".")
+          : normalizado.replace(/,/g, "");
+    } else if (ultimaVirgula >= 0) {
+      normalizado = normalizado.replace(",", ".");
+    }
+
+    const convertidoString = Number(normalizado);
+    return Number.isFinite(convertidoString) ? convertidoString : fallback;
+  }
+
   const convertido = Number(valor ?? fallback);
   return Number.isFinite(convertido) ? convertido : fallback;
 }
 
+function dinheiro(valor) {
+  return Math.round((numero(valor) + Number.EPSILON) * 100) / 100;
+}
+
+function dataLocal(valor) {
+  if (valor instanceof Date) return new Date(valor);
+
+  const texto = String(valor || "").trim();
+  const somenteData = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texto);
+  if (somenteData) {
+    const [, ano, mes, dia] = somenteData;
+    return new Date(Number(ano), Number(mes) - 1, Number(dia));
+  }
+
+  return new Date(valor);
+}
+
 function inicioDoDia(data) {
-  const valor = new Date(data);
+  const valor = dataLocal(data);
   valor.setHours(0, 0, 0, 0);
   return valor;
 }
 
 function fimDoDia(data) {
-  const valor = new Date(data);
+  const valor = dataLocal(data);
   valor.setHours(23, 59, 59, 999);
   return valor;
 }
@@ -54,13 +92,34 @@ function periodoDaQuery(query) {
 
 function custoDaVenda(venda) {
   return (venda.itens || []).reduce((total, item) => {
-    const custo = numero(item.custoUnitario) + numero(item.outrosCustos);
+    const produto = item.variacaoProduto?.produto;
+    const custo = numero(item.custoUnitario ?? produto?.custoUnitario) + numero(item.outrosCustos ?? produto?.outrosCustos);
     return total + custo * numero(item.quantidade);
   }, 0);
 }
 
-function nomeCliente(cliente) {
-  return cliente?.nome || "Cliente nao informado";
+function calcularVendaFinanceiro(venda) {
+  const subtotalItens = (venda.itens || []).reduce((total, item) => {
+    const produto = item.variacaoProduto?.produto;
+    const preco = numero(item.precoUnitario ?? produto?.preco);
+    return total + preco * numero(item.quantidade);
+  }, 0);
+  const subtotalProdutos = numero(venda.subtotalProdutos ?? subtotalItens);
+  const desconto = numero(venda.desconto);
+  const taxaEntrega = numero(venda.taxaEntrega);
+  const total = numero(venda.total);
+  const receitaProdutos = Math.max(subtotalProdutos - desconto, 0);
+  const custoProdutos = custoDaVenda(venda);
+
+  return {
+    total,
+    subtotalProdutos,
+    desconto,
+    taxaEntrega,
+    receitaProdutos,
+    custoProdutos,
+    lucroBruto: receitaProdutos - custoProdutos,
+  };
 }
 
 function vendaComoLancamento(venda) {
@@ -71,7 +130,7 @@ function vendaComoLancamento(venda) {
     origem: "venda",
     categoria: "venda",
     descricao: `Venda #${venda.id}`,
-    valor: numero(venda.total),
+    valor: dinheiro(venda.total),
     formaPagamento: venda.formaPagamento,
     status: "pago",
     data: venda.data,
@@ -110,7 +169,13 @@ router.get("/", requireRole("admin", "gerente"), async (req, res) => {
         orderBy: { data: "desc" },
         include: {
           cliente: { select: { id: true, nome: true } },
-          itens: true,
+          itens: {
+            include: {
+              variacaoProduto: {
+                include: { produto: true },
+              },
+            },
+          },
         },
       }),
       prisma.lancamentoFinanceiro.findMany({
@@ -134,8 +199,13 @@ router.get("/", requireRole("admin", "gerente"), async (req, res) => {
       }),
     ]);
 
-    const faturamento = vendas.reduce((total, venda) => total + numero(venda.total), 0);
-    const custoProdutos = vendas.reduce((total, venda) => total + custoDaVenda(venda), 0);
+    const vendasCalculadas = vendas.map((venda) => ({
+      venda,
+      valores: calcularVendaFinanceiro(venda),
+    }));
+    const faturamento = vendasCalculadas.reduce((total, item) => total + item.valores.total, 0);
+    const receitaProdutos = vendasCalculadas.reduce((total, item) => total + item.valores.receitaProdutos, 0);
+    const custoProdutos = vendasCalculadas.reduce((total, item) => total + item.valores.custoProdutos, 0);
     const entradasManuaisPagas = lancamentos
       .filter((item) => item.tipo === "entrada" && item.status === "pago")
       .reduce((total, item) => total + numero(item.valor), 0);
@@ -155,6 +225,10 @@ router.get("/", requireRole("admin", "gerente"), async (req, res) => {
       porPagamento[forma] = numero(porPagamento[forma]) + numero(lancamento.valor);
     }
 
+    const porPagamentoNormalizado = Object.fromEntries(
+      Object.entries(porPagamento).map(([forma, valor]) => [forma, dinheiro(valor)])
+    );
+
     const lancamentosNormalizados = [
       ...vendas.map(vendaComoLancamento),
       ...lancamentos.map((item) => ({
@@ -171,17 +245,18 @@ router.get("/", requireRole("admin", "gerente"), async (req, res) => {
         fim: periodo.fim,
       },
       resumo: {
-        faturamento,
-        recebido: faturamento + entradasManuaisPagas,
-        aReceber,
-        despesas: despesasPagas,
-        custoProdutos,
-        lucroBruto: faturamento - custoProdutos,
-        saldoEstimado: faturamento + entradasManuaisPagas - despesasPagas,
+        faturamento: dinheiro(faturamento),
+        recebido: dinheiro(faturamento + entradasManuaisPagas),
+        aReceber: dinheiro(aReceber),
+        despesas: dinheiro(despesasPagas),
+        receitaProdutos: dinheiro(receitaProdutos),
+        custoProdutos: dinheiro(custoProdutos),
+        lucroBruto: dinheiro(receitaProdutos - custoProdutos),
+        saldoEstimado: dinheiro(faturamento + entradasManuaisPagas - despesasPagas),
         vendas: vendas.length,
         lancamentos: lancamentos.length,
       },
-      porPagamento,
+      porPagamento: porPagamentoNormalizado,
       contasReceber: contasReceber.map((item) => ({
         ...item,
         status: statusAtual(item),
@@ -220,8 +295,8 @@ router.post("/lancamentos", assinaturaAtivaRequired, requireRole("admin", "geren
 
   try {
     const clienteId = await clienteDaLoja(req.body.clienteId, lojaId(req));
-    const data = req.body.data ? new Date(req.body.data) : new Date();
-    const vencimento = req.body.vencimento ? new Date(req.body.vencimento) : null;
+    const data = req.body.data ? dataLocal(req.body.data) : new Date();
+    const vencimento = req.body.vencimento ? dataLocal(req.body.vencimento) : null;
 
     if (Number.isNaN(data.getTime())) {
       return res.status(400).json({ error: "Data invalida." });

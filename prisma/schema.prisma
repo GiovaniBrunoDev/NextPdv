@@ -21,6 +21,7 @@ model Loja {
   metas        Meta[]
   entradas     EntradaEstoque[]
   fornecedores Fornecedor[]
+  entregadores  Entregador[]
   caixas       Caixa[]
   movimentosCaixa MovimentoCaixa[]
   lancamentosFinanceiros LancamentoFinanceiro[]
@@ -133,6 +134,20 @@ model Fornecedor {
   atualizadoEm DateTime  @updatedAt
   loja         Loja      @relation(fields: [lojaId], references: [id], onDelete: Cascade)
   produtos     Produto[]
+
+  @@unique([lojaId, nome])
+  @@index([lojaId, ativo])
+}
+
+model Entregador {
+  id           Int      @id @default(autoincrement())
+  lojaId       Int
+  nome         String
+  telefone     String?
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  loja         Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
 
   @@unique([lojaId, nome])
   @@index([lojaId, ativo])
@@ -317,10 +332,14 @@ model Pedido {
 model ItemPedido {
   id                Int             @id @default(autoincrement())
   pedidoId          Int
-  variacaoProdutoId Int
+  variacaoProdutoId Int?
+  nomeManual        String?
+  numeracaoManual   String?
   quantidade        Int
   precoUnitario     Float
+  custoUnitario     Float?
+  outrosCustos      Float?
   subtotal          Float
   pedido            Pedido          @relation(fields: [pedidoId], references: [id])
-  variacaoProduto   VariacaoProduto @relation(fields: [variacaoProdutoId], references: [id])
+  variacaoProduto   VariacaoProduto? @relation(fields: [variacaoProdutoId], references: [id], onDelete: SetNull)
 }
