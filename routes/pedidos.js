@@ -312,9 +312,10 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
         (acc, item) => acc + numero(item.precoUnitario) * numero(item.quantidade),
         0
       );
-      const descontoAplicado = Math.min(desconto, subtotalProdutos);
       const taxaEntregaFinal = pedido.tipoEntrega === "entrega" ? Math.max(numero(pedido.taxaEntrega), 0) : 0;
-      const totalFinal = Math.max(subtotalProdutos + taxaEntregaFinal - descontoAplicado, 0);
+      const totalAntesDesconto = subtotalProdutos + taxaEntregaFinal;
+      const descontoAplicado = Math.min(desconto, totalAntesDesconto);
+      const totalFinal = Math.max(totalAntesDesconto - descontoAplicado, 0);
 
       const novaVenda = await tx.venda.create({
         data: {

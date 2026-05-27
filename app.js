@@ -23,6 +23,7 @@ const caixaRoutes = require("./routes/caixaRoutes");
 const financeiroRoutes = require("./routes/financeiroRoutes");
 const fornecedorRoutes = require("./routes/fornecedorRoutes");
 const entregadorRoutes = require("./routes/entregadorRoutes");
+const mobileUploadRoutes = require("./routes/mobileUploadRoutes");
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const { authRequired, lojaRequired } = require("./middlewares/auth");
@@ -40,6 +41,7 @@ app.get("/", (req, res) => {
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/auth", authRoutes);
 app.use("/admin", adminRoutes);
+app.use("/mobile-upload", mobileUploadRoutes);
 app.use('/produtos', authRequired, lojaRequired, produtoRoutes);
 app.use('/vendas', authRequired, lojaRequired, vendaRoutes);
 app.use("/metas", authRequired, lojaRequired, metasRoutes);

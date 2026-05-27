@@ -41,6 +41,7 @@ async function authRequired(req, res, next) {
         id: true,
         nome: true,
         email: true,
+        telefone: true,
         superadmin: true,
         ativo: true,
         membros: {

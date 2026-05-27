@@ -32,28 +32,33 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
   }
 
   try {
-    const entregador = await prisma.entregador.upsert({
-      where: {
-        lojaId_nome: {
-          lojaId: lojaId(req),
-          nome,
-        },
-      },
-      update: {
-        telefone,
-        ativo: true,
-      },
-      create: {
-        lojaId: lojaId(req),
-        nome,
-        telefone,
-      },
+    const existente = await prisma.entregador.findFirst({
+      where: { lojaId: lojaId(req), nome },
     });
+
+    const entregador = existente
+      ? await prisma.entregador.update({
+          where: { id: existente.id },
+          data: { telefone, ativo: true },
+        })
+      : await prisma.entregador.create({
+          data: {
+            lojaId: lojaId(req),
+            nome,
+            telefone,
+          },
+        });
 
     res.status(201).json(entregador);
   } catch (error) {
     console.error("Erro ao cadastrar entregador:", error);
-    res.status(400).json({ error: "Erro ao cadastrar entregador." });
+    if (error.code === "P2002") {
+      const entregador = await prisma.entregador.findFirst({
+        where: { lojaId: lojaId(req), nome },
+      });
+      if (entregador) return res.status(200).json(entregador);
+    }
+    res.status(400).json({ error: error.message || "Erro ao cadastrar entregador." });
   }
 });
 
