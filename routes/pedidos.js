@@ -33,14 +33,14 @@ function itemManual(item) {
 
 function montarItensPedido(itens) {
   return itens.map((item) => {
-    const quantidade = Number(item.quantidade);
+    const quantidade = Number(item.quantidade ?? item.qtd ?? 1);
     const precoUnitario = toNumberOrNull(item.precoUnitario ?? item.preco ?? item.valorVenda);
 
     if (itemManual(item)) {
       return {
         manual: true,
-        nomeManual: String(item.nomeManual || item.nome || "").trim(),
-        numeracaoManual: String(item.numeracaoManual || item.numeracao || "").trim() || null,
+        nomeManual: String(item.nomeManual || item.nome || item.descricao || "").trim(),
+        numeracaoManual: String(item.numeracaoManual || item.numeracao || item.tamanho || "").trim() || null,
         quantidade,
         precoUnitario,
         custoUnitario: numero(item.custoUnitario ?? item.valorCusto),

@@ -18,6 +18,12 @@ function normalizarGenero(genero) {
   return ["feminino", "masculino", "unissex"].includes(genero) ? genero : "unissex";
 }
 
+function numeroFormulario(valor) {
+  if (valor === null || valor === undefined || valor === "") return null;
+  const numero = Number(typeof valor === "string" ? valor.replace(",", ".") : valor);
+  return Number.isFinite(numero) ? numero : null;
+}
+
 function urlAbsoluta(valor) {
   return /^https?:\/\//i.test(String(valor || ""));
 }
@@ -136,21 +142,37 @@ async function criarProduto(req, res) {
   const gifUrlFinal = gifUrl || findGifByVideoUrl(videoUrl);
 
   try {
+    const nomeLimpo = String(nome || "").trim();
+    const precoNumero = numeroFormulario(preco);
+    const custoNumero = numeroFormulario(custoUnitario);
+    const outrosCustosNumero = numeroFormulario(outrosCustos) ?? 0;
+
+    if (!nomeLimpo) return res.status(400).json({ error: "Informe o nome do produto." });
+    if (precoNumero === null || precoNumero <= 0) {
+      return res.status(400).json({ error: "Informe o preco de venda do produto." });
+    }
+    if (custoNumero === null || custoNumero < 0) {
+      return res.status(400).json({ error: "Informe o custo unitario do produto." });
+    }
+    if (outrosCustosNumero < 0) {
+      return res.status(400).json({ error: "Informe outros custos corretamente." });
+    }
+
     const fornecedorValidoId = await validarFornecedorDaLoja(fornecedorId, lojaId(req));
 
     const novo = await prisma.produto.create({
       data: {
         lojaId: lojaId(req),
         fornecedorId: fornecedorValidoId,
-        nome,
+        nome: nomeLimpo,
         marca: marca?.trim() || null,
         genero: normalizarGenero(genero),
-        preco: Number(preco || 0),
-        custoUnitario: Number(custoUnitario || 0),
+        preco: precoNumero,
+        custoUnitario: custoNumero,
         imagemUrl,
         videoUrl,
         gifUrl: gifUrlFinal,
-        outrosCustos: Number(outrosCustos || 0),
+        outrosCustos: outrosCustosNumero,
         variacoes: {
           create: variacoes.map((variacao) => ({
             numeracao: variacao.numeracao,
@@ -203,13 +225,29 @@ async function atualizarProduto(req, res) {
     if (!produto) return res.status(404).json({ error: "Produto nao encontrado." });
 
     const data = {};
-    if (nome !== undefined) data.nome = nome;
+    if (nome !== undefined) {
+      const nomeLimpo = String(nome || "").trim();
+      if (!nomeLimpo) return res.status(400).json({ error: "Informe o nome do produto." });
+      data.nome = nomeLimpo;
+    }
     if (marca !== undefined) data.marca = marca?.trim() || null;
     if (genero !== undefined) data.genero = normalizarGenero(genero);
     if (fornecedorId !== undefined) data.fornecedorId = await validarFornecedorDaLoja(fornecedorId, lojaId(req));
-    if (preco !== undefined) data.preco = Number(preco);
-    if (custoUnitario !== undefined) data.custoUnitario = Number(custoUnitario);
-    if (outrosCustos !== undefined) data.outrosCustos = Number(outrosCustos);
+    if (preco !== undefined) {
+      const precoNumero = numeroFormulario(preco);
+      if (precoNumero === null || precoNumero <= 0) return res.status(400).json({ error: "Informe o preco de venda do produto." });
+      data.preco = precoNumero;
+    }
+    if (custoUnitario !== undefined) {
+      const custoNumero = numeroFormulario(custoUnitario);
+      if (custoNumero === null || custoNumero < 0) return res.status(400).json({ error: "Informe o custo unitario do produto." });
+      data.custoUnitario = custoNumero;
+    }
+    if (outrosCustos !== undefined) {
+      const outrosCustosNumero = numeroFormulario(outrosCustos);
+      if (outrosCustosNumero === null || outrosCustosNumero < 0) return res.status(400).json({ error: "Informe outros custos corretamente." });
+      data.outrosCustos = outrosCustosNumero;
+    }
     if (imagemUrl !== undefined) data.imagemUrl = imagemUrl;
     if (videoUrl !== undefined) data.videoUrl = videoUrl;
     if (gifUrl !== undefined || videoUrl !== undefined) {
