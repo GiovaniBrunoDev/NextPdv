@@ -9,7 +9,7 @@ function lojaId(req) {
   return req.loja.id;
 }
 
-router.get("/", requireRole("admin", "gerente"), async (req, res) => {
+router.get("/", requireRole("admin", "gerente", "vendedor"), async (req, res) => {
   try {
     const fornecedores = await prisma.fornecedor.findMany({
       where: { lojaId: lojaId(req), ativo: true },
