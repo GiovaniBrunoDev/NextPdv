@@ -198,6 +198,157 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
   }
 });
 
+router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
+  try {
+    const {
+      clienteId,
+      observacoes,
+      dataEntrega,
+      horarioEntrega,
+      tipoEntrega,
+      endereco,
+      taxaEntrega,
+      produtos: produtosDoBody,
+      itens: itensDoBody,
+    } = req.body;
+
+    const produtos = montarItensPedido(produtosDoBody || itensDoBody || []);
+    if (!produtos.length) return res.status(400).json({ error: "Nenhum produto informado." });
+
+    const itemInvalido = produtos.find((item) => {
+      if (!Number.isInteger(item.quantidade) || item.quantidade <= 0) return true;
+      if (item.manual) {
+        return !item.nomeManual || item.precoUnitario === null || item.precoUnitario <= 0 || item.custoUnitario < 0 || item.outrosCustos < 0;
+      }
+      return !Number.isInteger(item.variacaoProdutoId);
+    });
+    if (itemInvalido) return res.status(400).json({ error: "Itens do pedido invalidos." });
+
+    const pedidoId = Number(req.params.id);
+    const novaDataEntrega = dataEntrega ? new Date(dataEntrega) : null;
+    const clienteIdNumerico = toNumberOrNull(clienteId);
+    const tipoEntregaFinal = tipoEntrega || "retirada";
+    const taxaEntregaPedido = tipoEntregaFinal === "entrega" ? Math.max(numero(taxaEntrega), 0) : 0;
+
+    const pedido = await prisma.$transaction(async (tx) => {
+      const pedidoAtual = await tx.pedido.findFirst({
+        where: { id: pedidoId, lojaId: lojaId(req) },
+        include: { itens: true },
+      });
+
+      if (!pedidoAtual) throw new Error("Pedido nao encontrado.");
+      if (STATUS_FINAIS.includes(pedidoAtual.status)) throw new Error("Pedido ja foi finalizado.");
+
+      if (clienteIdNumerico) {
+        const cliente = await tx.cliente.findFirst({
+          where: { id: clienteIdNumerico, lojaId: lojaId(req) },
+        });
+        if (!cliente) throw new Error("Cliente nao encontrado nesta loja.");
+      }
+
+      const reservaAtiva = STATUS_COM_ESTOQUE_RESERVADO.includes(pedidoAtual.status);
+      if (reservaAtiva) {
+        for (const item of pedidoAtual.itens) {
+          if (!item.variacaoProdutoId) continue;
+
+          await tx.variacaoProduto.update({
+            where: { id: item.variacaoProdutoId },
+            data: { estoque: { increment: item.quantidade } },
+          });
+        }
+      }
+
+      const itensComPreco = [];
+      for (const item of produtos) {
+        if (item.manual) {
+          itensComPreco.push({
+            variacaoProdutoId: null,
+            nomeManual: item.nomeManual,
+            numeracaoManual: item.numeracaoManual,
+            quantidade: item.quantidade,
+            precoUnitario: item.precoUnitario,
+            custoUnitario: item.custoUnitario,
+            outrosCustos: item.outrosCustos,
+            subtotal: item.quantidade * item.precoUnitario,
+          });
+          continue;
+        }
+
+        const variacao = await tx.variacaoProduto.findFirst({
+          where: {
+            id: item.variacaoProdutoId,
+            produto: { lojaId: lojaId(req) },
+          },
+          include: { produto: true },
+        });
+        if (!variacao) throw new Error(`Variacao ${item.variacaoProdutoId} nao encontrada.`);
+
+        if (reservaAtiva) {
+          const reserva = await tx.variacaoProduto.updateMany({
+            where: {
+              id: item.variacaoProdutoId,
+              estoque: { gte: item.quantidade },
+              produto: { lojaId: lojaId(req) },
+            },
+            data: { estoque: { decrement: item.quantidade } },
+          });
+
+          if (reserva.count === 0) {
+            throw new Error(`Estoque insuficiente para ${variacao.produto.nome} (${variacao.numeracao}).`);
+          }
+        }
+
+        const precoUnitario = item.precoUnitario ?? variacao.produto.preco;
+        itensComPreco.push({
+          variacaoProdutoId: variacao.id,
+          quantidade: item.quantidade,
+          precoUnitario,
+          subtotal: item.quantidade * precoUnitario,
+        });
+      }
+
+      const subtotalItens = itensComPreco.reduce((acc, item) => acc + item.subtotal, 0);
+      const totalPedido = subtotalItens + taxaEntregaPedido;
+      const statusAtualizado = pedidoAtual.status === "confirmado" ? "confirmado" : novaDataEntrega ? "agendado" : "reservado";
+
+      await tx.itemPedido.deleteMany({ where: { pedidoId: pedidoAtual.id } });
+
+      return tx.pedido.update({
+        where: { id: pedidoAtual.id },
+        data: {
+          clienteId: clienteIdNumerico || null,
+          observacoes,
+          dataEntrega: novaDataEntrega,
+          horarioEntrega,
+          tipoEntrega: tipoEntregaFinal,
+          endereco: tipoEntregaFinal === "entrega" ? endereco : null,
+          taxaEntrega: taxaEntregaPedido,
+          total: totalPedido,
+          status: statusAtualizado,
+          itens: {
+            create: itensComPreco.map((item) => ({
+              variacaoProdutoId: item.variacaoProdutoId,
+              nomeManual: item.nomeManual || null,
+              numeracaoManual: item.numeracaoManual || null,
+              quantidade: item.quantidade,
+              precoUnitario: item.precoUnitario,
+              custoUnitario: item.custoUnitario ?? null,
+              outrosCustos: item.outrosCustos ?? null,
+              subtotal: item.subtotal,
+            })),
+          },
+        },
+        include: includePedidoCompleto(),
+      });
+    });
+
+    res.json({ message: "Pedido atualizado com sucesso!", pedido });
+  } catch (error) {
+    console.error("Erro ao editar pedido:", error);
+    res.status(400).json({ error: error.message || "Erro ao editar pedido." });
+  }
+});
+
 router.put("/:id/status", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
   try {
     const { status } = req.body;
