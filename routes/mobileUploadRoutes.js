@@ -195,11 +195,11 @@ function renderUploadPage(token) {
             <strong>Escolher imagem no celular</strong>
             <p>Voce pode tirar uma foto agora ou selecionar uma imagem da galeria.</p>
           </div>
-          <input id="file" type="file" accept="image/*" capture="environment" hidden />
+          <input id="file" type="file" accept="image/*" hidden />
         </label>
 
         <img id="preview" class="preview" alt="Previa do produto" />
-        <input id="fileAlt" type="file" accept="image/*" capture="environment" />
+        <input id="fileAlt" type="file" accept="image/*" />
 
         <button id="submit" type="button" disabled>Enviar imagem para a Lojia</button>
         <div id="status" class="status"></div>
@@ -319,7 +319,11 @@ router.post(
     limparSessoesExpiradas();
 
     const token = crypto.randomUUID();
-    const uploadUrl = `${basePublica(req)}/mobile-upload/${token}`;
+    const frontendOrigin = origemValida(req.body.origin) || origemValida(req.headers.origin);
+    const apiUrl = basePublica(req);
+    const uploadUrl = frontendOrigin
+      ? `${frontendOrigin}/upload-celular.html?token=${token}&api=${encodeURIComponent(apiUrl)}`
+      : `${apiUrl}/mobile-upload/${token}`;
 
     sessoes.set(token, {
       token,
