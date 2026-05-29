@@ -13,6 +13,11 @@ const entradaInclude = {
   },
 };
 
+const transacaoEstoqueOpcoes = {
+  maxWait: 10000,
+  timeout: 20000,
+};
+
 function lojaId(req) {
   return req.loja.id;
 }
@@ -70,9 +75,10 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
   }
 
   try {
-    const entrada = await prisma.$transaction(async (tx) => {
+    const lojaAtualId = lojaId(req);
+    const entradaCriada = await prisma.$transaction(async (tx) => {
       const variacao = await tx.variacaoProduto.findFirst({
-        where: { id: variacaoId, produto: { lojaId: lojaId(req) } },
+        where: { id: variacaoId, produto: { lojaId: lojaAtualId } },
         include: { produto: true },
       });
       if (!variacao) throw new Error("Variacao nao encontrada.");
@@ -95,7 +101,7 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
 
       return tx.entradaEstoque.create({
         data: {
-          lojaId: lojaId(req),
+          lojaId: lojaAtualId,
           variacaoProdutoId: variacaoId,
           quantidade: quantidadeEntrada,
           custoUnitario: custo,
@@ -103,8 +109,12 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
           fornecedor: fornecedor?.trim() || null,
           observacao: observacao?.trim() || null,
         },
-        include: entradaInclude,
       });
+    }, transacaoEstoqueOpcoes);
+
+    const entrada = await prisma.entradaEstoque.findFirst({
+      where: { id: entradaCriada.id, lojaId: lojaAtualId },
+      include: entradaInclude,
     });
 
     res.status(201).json(entrada);
@@ -141,9 +151,10 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
   }
 
   try {
-    const entradas = await prisma.$transaction(async (tx) => {
+    const lojaAtualId = lojaId(req);
+    const entradasCriadas = await prisma.$transaction(async (tx) => {
       const produto = await tx.produto.findFirst({
-        where: { id: produtoIdNumerico, lojaId: lojaId(req) },
+        where: { id: produtoIdNumerico, lojaId: lojaAtualId },
         include: { variacoes: true },
       });
       if (!produto) throw new Error("Produto nao encontrado.");
@@ -159,24 +170,25 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
         }
       }
 
+      const variacoesPorNumeracao = new Map(
+        produto.variacoes.map((variacao) => [String(variacao.numeracao), variacao])
+      );
       const entradasCriadas = [];
+
       for (const item of itensValidos) {
         let variacao = item.variacaoProdutoId
-          ? await tx.variacaoProduto.findFirst({
-              where: { id: item.variacaoProdutoId, produto: { lojaId: lojaId(req) } },
-            })
+          ? produto.variacoes.find((variacaoProduto) => variacaoProduto.id === item.variacaoProdutoId) || null
           : null;
 
         if (!variacao) {
-          variacao = await tx.variacaoProduto.findFirst({
-            where: { produtoId: produtoIdNumerico, numeracao: item.numeracao },
-          });
+          variacao = variacoesPorNumeracao.get(item.numeracao) || null;
         }
 
         if (!variacao) {
           variacao = await tx.variacaoProduto.create({
             data: { produtoId: produtoIdNumerico, numeracao: item.numeracao, estoque: 0 },
           });
+          variacoesPorNumeracao.set(String(variacao.numeracao), variacao);
         }
 
         await tx.variacaoProduto.update({
@@ -187,7 +199,7 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
         entradasCriadas.push(
           await tx.entradaEstoque.create({
             data: {
-              lojaId: lojaId(req),
+              lojaId: lojaAtualId,
               variacaoProdutoId: variacao.id,
               quantidade: item.quantidade,
               custoUnitario: custo,
@@ -195,12 +207,20 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
               fornecedor: fornecedor?.trim() || null,
               observacao: observacao?.trim() || null,
             },
-            include: entradaInclude,
           })
         );
       }
 
       return entradasCriadas;
+    }, transacaoEstoqueOpcoes);
+
+    const entradas = await prisma.entradaEstoque.findMany({
+      where: {
+        lojaId: lojaAtualId,
+        id: { in: entradasCriadas.map((entrada) => entrada.id) },
+      },
+      orderBy: { criadoEm: "desc" },
+      include: entradaInclude,
     });
 
     res.status(201).json({ mensagem: "Entrada por grade registrada com sucesso.", entradas });
