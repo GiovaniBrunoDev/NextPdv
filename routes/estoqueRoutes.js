@@ -17,6 +17,31 @@ function lojaId(req) {
   return req.loja.id;
 }
 
+function numeroFormulario(valor) {
+  if (valor === null || valor === undefined || valor === "") return null;
+  const normalizado = typeof valor === "string" ? valor.replace(",", ".") : valor;
+  const numero = Number(normalizado);
+  return Number.isFinite(numero) ? numero : null;
+}
+
+function custosDaEntrada(custoUnitario, outrosCustos) {
+  const custo = numeroFormulario(custoUnitario);
+  const outros = numeroFormulario(outrosCustos);
+
+  if (custoUnitario !== "" && custoUnitario !== undefined && custoUnitario !== null && custo === null) {
+    throw new Error("Informe um custo unitario valido.");
+  }
+
+  if (outrosCustos !== "" && outrosCustos !== undefined && outrosCustos !== null && outros === null) {
+    throw new Error("Informe outros custos corretamente.");
+  }
+
+  if (custo !== null && custo < 0) throw new Error("O custo unitario nao pode ser negativo.");
+  if (outros !== null && outros < 0) throw new Error("Outros custos nao podem ser negativos.");
+
+  return { custo, outros };
+}
+
 router.get("/entradas", async (req, res) => {
   const limite = Math.min(Number(req.query.limite || 50), 200);
 
@@ -52,8 +77,7 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
       });
       if (!variacao) throw new Error("Variacao nao encontrada.");
 
-      const custo = custoUnitario === "" || custoUnitario === undefined ? null : Number(custoUnitario);
-      const outros = outrosCustos === "" || outrosCustos === undefined ? null : Number(outrosCustos);
+      const { custo, outros } = custosDaEntrada(custoUnitario, outrosCustos);
 
       await tx.variacaoProduto.update({
         where: { id: variacaoId },
@@ -124,8 +148,7 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
       });
       if (!produto) throw new Error("Produto nao encontrado.");
 
-      const custo = custoUnitario === "" || custoUnitario === undefined ? null : Number(custoUnitario);
-      const outros = outrosCustos === "" || outrosCustos === undefined ? null : Number(outrosCustos);
+      const { custo, outros } = custosDaEntrada(custoUnitario, outrosCustos);
 
       if (atualizarCustosProduto) {
         const dataProduto = {};
