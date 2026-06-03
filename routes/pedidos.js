@@ -2,9 +2,12 @@ const express = require("express");
 const { PrismaClient } = require("@prisma/client");
 const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
 const { registrarVendaNoCaixa } = require("../services/caixaService");
+const { registrarMovimentoEstoque } = require("../services/estoqueMovimentoService");
+const { mensagemPublica } = require("../services/errorResponse");
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const transacaoOperacionalOpcoes = { maxWait: 10000, timeout: 20000 };
 
 const STATUS_COM_ESTOQUE_RESERVADO = ["reservado", "agendado", "confirmado"];
 const STATUS_FINAIS = ["cancelado", "entregue"];
@@ -110,6 +113,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
       }
 
       const itensComPreco = [];
+      const movimentosReservaIds = [];
       for (const item of produtos) {
         if (item.manual) {
           const precoUnitario = item.precoUnitario;
@@ -148,6 +152,18 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
           throw new Error(`Estoque insuficiente para ${variacao.produto.nome} (${variacao.numeracao}).`);
         }
 
+        const movimentoReserva = await registrarMovimentoEstoque(tx, {
+          lojaId: lojaId(req),
+          variacaoProdutoId: variacao.id,
+          usuarioId: req.usuario?.id,
+          tipo: "reserva_pedido",
+          quantidade: -item.quantidade,
+          saldoAnterior: variacao.estoque,
+          saldoFinal: variacao.estoque - item.quantidade,
+          origemTipo: "pedido",
+        });
+        movimentosReservaIds.push(movimentoReserva.id);
+
         const precoUnitario = item.precoUnitario ?? variacao.produto.preco;
         itensComPreco.push({
           variacaoProdutoId: variacao.id,
@@ -160,7 +176,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
       const subtotalItens = itensComPreco.reduce((acc, item) => acc + item.subtotal, 0);
       const totalPedido = subtotalItens + taxaEntregaPedido;
 
-      return tx.pedido.create({
+      const pedidoCriado = await tx.pedido.create({
         data: {
           lojaId: lojaId(req),
           clienteId: clienteIdNumerico || null,
@@ -189,12 +205,21 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
         },
         include: includePedidoCompleto(),
       });
-    });
+
+      if (movimentosReservaIds.length) {
+        await tx.movimentoEstoque.updateMany({
+          where: { id: { in: movimentosReservaIds } },
+          data: { origemId: pedidoCriado.id },
+        });
+      }
+
+      return pedidoCriado;
+    }, transacaoOperacionalOpcoes);
 
     res.status(201).json({ message: "Pedido criado com sucesso!", pedido });
   } catch (error) {
     console.error("Erro ao criar pedido:", error);
-    res.status(400).json({ error: error.message || "Erro interno ao criar pedido." });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel criar o pedido. Tente novamente.") });
   }
 });
 
@@ -251,9 +276,25 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente", "ven
         for (const item of pedidoAtual.itens) {
           if (!item.variacaoProdutoId) continue;
 
-          await tx.variacaoProduto.update({
+          const variacao = await tx.variacaoProduto.findUnique({
+            where: { id: item.variacaoProdutoId },
+          });
+          if (!variacao) continue;
+
+          const variacaoAtualizada = await tx.variacaoProduto.update({
             where: { id: item.variacaoProdutoId },
             data: { estoque: { increment: item.quantidade } },
+          });
+          await registrarMovimentoEstoque(tx, {
+            lojaId: lojaId(req),
+            variacaoProdutoId: item.variacaoProdutoId,
+            usuarioId: req.usuario?.id,
+            tipo: "edicao_pedido_retorno",
+            quantidade: item.quantidade,
+            saldoAnterior: variacao.estoque,
+            saldoFinal: variacaoAtualizada.estoque,
+            origemTipo: "pedido",
+            origemId: pedidoAtual.id,
           });
         }
       }
@@ -296,6 +337,18 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente", "ven
           if (reserva.count === 0) {
             throw new Error(`Estoque insuficiente para ${variacao.produto.nome} (${variacao.numeracao}).`);
           }
+
+          await registrarMovimentoEstoque(tx, {
+            lojaId: lojaId(req),
+            variacaoProdutoId: variacao.id,
+            usuarioId: req.usuario?.id,
+            tipo: "edicao_pedido_reserva",
+            quantidade: -item.quantidade,
+            saldoAnterior: variacao.estoque,
+            saldoFinal: variacao.estoque - item.quantidade,
+            origemTipo: "pedido",
+            origemId: pedidoAtual.id,
+          });
         }
 
         const precoUnitario = item.precoUnitario ?? variacao.produto.preco;
@@ -340,12 +393,12 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente", "ven
         },
         include: includePedidoCompleto(),
       });
-    });
+    }, transacaoOperacionalOpcoes);
 
     res.json({ message: "Pedido atualizado com sucesso!", pedido });
   } catch (error) {
     console.error("Erro ao editar pedido:", error);
-    res.status(400).json({ error: error.message || "Erro ao editar pedido." });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel atualizar o pedido. Tente novamente.") });
   }
 });
 
@@ -368,9 +421,25 @@ router.put("/:id/status", assinaturaAtivaRequired, requireRole("admin", "gerente
         for (const item of pedidoAtual.itens) {
           if (!item.variacaoProdutoId) continue;
 
-          await tx.variacaoProduto.update({
+          const variacao = await tx.variacaoProduto.findUnique({
+            where: { id: item.variacaoProdutoId },
+          });
+          if (!variacao) continue;
+
+          const variacaoAtualizada = await tx.variacaoProduto.update({
             where: { id: item.variacaoProdutoId },
             data: { estoque: { increment: item.quantidade } },
+          });
+          await registrarMovimentoEstoque(tx, {
+            lojaId: lojaId(req),
+            variacaoProdutoId: item.variacaoProdutoId,
+            usuarioId: req.usuario?.id,
+            tipo: "cancelamento_pedido",
+            quantidade: item.quantidade,
+            saldoAnterior: variacao.estoque,
+            saldoFinal: variacaoAtualizada.estoque,
+            origemTipo: "pedido",
+            origemId: pedidoAtual.id,
           });
         }
       }
@@ -380,12 +449,12 @@ router.put("/:id/status", assinaturaAtivaRequired, requireRole("admin", "gerente
         data: { status },
         include: includePedidoCompleto(),
       });
-    });
+    }, transacaoOperacionalOpcoes);
 
     res.json({ message: `Status atualizado para ${status}.`, pedido });
   } catch (error) {
     console.error("Erro ao atualizar status:", error);
-    res.status(400).json({ error: error.message || "Erro ao atualizar status do pedido." });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel atualizar o status do pedido.") });
   }
 });
 
@@ -518,12 +587,12 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
       await tx.itemPedido.deleteMany({ where: { pedidoId: pedido.id } });
       await tx.pedido.delete({ where: { id: pedido.id } });
       return novaVenda;
-    });
+    }, transacaoOperacionalOpcoes);
 
     res.json({ message: "Pedido convertido em venda com sucesso!", venda });
   } catch (error) {
     console.error("Erro ao confirmar pedido:", error);
-    res.status(400).json({ error: error.message || "Erro ao confirmar pedido." });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel confirmar o pedido. Tente novamente.") });
   }
 });
 

@@ -32,6 +32,7 @@ model Loja {
   entregadores  Entregador[]
   caixas       Caixa[]
   movimentosCaixa MovimentoCaixa[]
+  movimentosEstoque MovimentoEstoque[]
   lancamentosFinanceiros LancamentoFinanceiro[]
   membros      MembroLoja[]
   assinatura   Assinatura?
@@ -53,6 +54,7 @@ model Usuario {
   caixasAbertos Caixa[]       @relation("CaixaAbertoPor")
   caixasFechados Caixa[]      @relation("CaixaFechadoPor")
   movimentosCaixaCriados MovimentoCaixa[] @relation("MovimentoCaixaCriadoPor")
+  movimentosEstoqueCriados MovimentoEstoque[] @relation("MovimentoEstoqueCriadoPor")
 }
 
 model MembroLoja {
@@ -170,6 +172,7 @@ model VariacaoProduto {
   itens       ItemVenda[]
   itensPedido ItemPedido[]
   entradas    EntradaEstoque[]
+  movimentos  MovimentoEstoque[]
   produto     Produto          @relation(fields: [produtoId], references: [id], onDelete: Cascade)
 }
 
@@ -303,6 +306,28 @@ model EntradaEstoque {
   criadoEm          DateTime        @default(now())
   variacaoProduto   VariacaoProduto @relation(fields: [variacaoProdutoId], references: [id], onDelete: Cascade)
   loja              Loja            @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+}
+
+model MovimentoEstoque {
+  id                Int             @id @default(autoincrement())
+  lojaId            Int
+  variacaoProdutoId Int
+  criadoPorId       Int?
+  tipo              String
+  quantidade        Int
+  saldoAnterior     Int
+  saldoFinal        Int
+  origemTipo        String?
+  origemId          Int?
+  observacao        String?
+  criadoEm          DateTime        @default(now())
+  loja              Loja            @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  variacaoProduto   VariacaoProduto @relation(fields: [variacaoProdutoId], references: [id], onDelete: Cascade)
+  criadoPor         Usuario?        @relation("MovimentoEstoqueCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([lojaId, criadoEm])
+  @@index([variacaoProdutoId, criadoEm])
+  @@index([origemTipo, origemId])
 }
 
 model Meta {

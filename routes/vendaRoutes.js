@@ -2,9 +2,12 @@ const express = require("express");
 const { PrismaClient } = require("@prisma/client");
 const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
 const { registrarVendaNoCaixa } = require("../services/caixaService");
+const { registrarMovimentoEstoque } = require("../services/estoqueMovimentoService");
+const { mensagemPublica } = require("../services/errorResponse");
 
 const router = express.Router();
 const prisma = new PrismaClient();
+const transacaoOperacionalOpcoes = { maxWait: 10000, timeout: 20000 };
 
 const vendaInclude = {
   cliente: {
@@ -156,9 +159,27 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
           },
         });
 
-        await tx.variacaoProduto.update({
-          where: { id: variacao.id },
+        const baixa = await tx.variacaoProduto.updateMany({
+          where: {
+            id: variacao.id,
+            estoque: { gte: quantidade },
+          },
           data: { estoque: { decrement: quantidade } },
+        });
+        if (baixa.count === 0) {
+          throw new Error(`Estoque insuficiente para ${variacao.produto.nome} (${variacao.numeracao}).`);
+        }
+
+        await registrarMovimentoEstoque(tx, {
+          lojaId: lojaId(req),
+          variacaoProdutoId: variacao.id,
+          usuarioId: req.usuario?.id,
+          tipo: "venda",
+          quantidade: -quantidade,
+          saldoAnterior: variacao.estoque,
+          saldoFinal: variacao.estoque - quantidade,
+          origemTipo: "venda",
+          origemId: novaVenda.id,
         });
       }
 
@@ -171,12 +192,12 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
       });
 
       return tx.venda.findUnique({ where: { id: novaVenda.id }, include: vendaInclude });
-    });
+    }, transacaoOperacionalOpcoes);
 
     return res.status(201).json({ mensagem: "Venda registrada com sucesso!", vendaId: venda.id, venda });
   } catch (error) {
     console.error("Erro ao registrar venda:", error);
-    return res.status(400).json({ error: error.message || "Erro ao registrar venda." });
+    return res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel registrar a venda. Tente novamente.") });
   }
 });
 
@@ -247,15 +268,32 @@ router.delete("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), 
       for (const item of venda.itens) {
         if (!item.variacaoProdutoId) continue;
 
-        await tx.variacaoProduto.update({
+        const variacao = await tx.variacaoProduto.findUnique({
+          where: { id: item.variacaoProdutoId },
+        });
+        if (!variacao) continue;
+
+        const variacaoAtualizada = await tx.variacaoProduto.update({
           where: { id: item.variacaoProdutoId },
           data: { estoque: { increment: item.quantidade } },
+        });
+
+        await registrarMovimentoEstoque(tx, {
+          lojaId: lojaId(req),
+          variacaoProdutoId: item.variacaoProdutoId,
+          usuarioId: req.usuario?.id,
+          tipo: "cancelamento_venda",
+          quantidade: item.quantidade,
+          saldoAnterior: variacao.estoque,
+          saldoFinal: variacaoAtualizada.estoque,
+          origemTipo: "venda",
+          origemId: venda.id,
         });
       }
 
       await tx.itemVenda.deleteMany({ where: { vendaId: venda.id } });
       await tx.venda.delete({ where: { id: venda.id } });
-    });
+    }, transacaoOperacionalOpcoes);
 
     res.json({ mensagem: "Venda excluida com sucesso!" });
   } catch (error) {
@@ -289,9 +327,25 @@ router.post("/troca", assinaturaAtivaRequired, requireRole("admin", "gerente", "
       if (!variacaoNova) throw new Error("Nova variacao nao encontrada.");
       if (variacaoNova.estoque < item.quantidade) throw new Error("Estoque insuficiente para a nova variacao.");
 
-      await tx.variacaoProduto.update({
+      const variacaoAnterior = await tx.variacaoProduto.findUnique({
+        where: { id: item.variacaoProdutoId },
+      });
+      if (!variacaoAnterior) throw new Error("Variacao original nao encontrada.");
+
+      const variacaoAnteriorAtualizada = await tx.variacaoProduto.update({
         where: { id: item.variacaoProdutoId },
         data: { estoque: { increment: item.quantidade } },
+      });
+      await registrarMovimentoEstoque(tx, {
+        lojaId: lojaId(req),
+        variacaoProdutoId: item.variacaoProdutoId,
+        usuarioId: req.usuario?.id,
+        tipo: "troca_retorno",
+        quantidade: item.quantidade,
+        saldoAnterior: variacaoAnterior.estoque,
+        saldoFinal: variacaoAnteriorAtualizada.estoque,
+        origemTipo: "venda",
+        origemId: venda.id,
       });
 
       await tx.itemVenda.update({
@@ -304,18 +358,33 @@ router.post("/troca", assinaturaAtivaRequired, requireRole("admin", "gerente", "
         },
       });
 
-      await tx.variacaoProduto.update({
-        where: { id: variacaoNova.id },
+      const baixaNovaVariacao = await tx.variacaoProduto.updateMany({
+        where: {
+          id: variacaoNova.id,
+          estoque: { gte: item.quantidade },
+        },
         data: { estoque: { decrement: item.quantidade } },
+      });
+      if (baixaNovaVariacao.count === 0) throw new Error("Estoque insuficiente para a nova variacao.");
+      await registrarMovimentoEstoque(tx, {
+        lojaId: lojaId(req),
+        variacaoProdutoId: variacaoNova.id,
+        usuarioId: req.usuario?.id,
+        tipo: "troca_saida",
+        quantidade: -item.quantidade,
+        saldoAnterior: variacaoNova.estoque,
+        saldoFinal: variacaoNova.estoque - item.quantidade,
+        origemTipo: "venda",
+        origemId: venda.id,
       });
 
       return tx.venda.findUnique({ where: { id: venda.id }, include: vendaInclude });
-    });
+    }, transacaoOperacionalOpcoes);
 
     res.json({ mensagem: "Troca realizada com sucesso!", venda: vendaAtualizada });
   } catch (error) {
     console.error("Erro ao realizar troca:", error);
-    res.status(400).json({ error: error.message || "Erro ao realizar troca." });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel concluir a troca. Tente novamente.") });
   }
 });
 

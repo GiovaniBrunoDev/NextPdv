@@ -1,6 +1,8 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
 const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
+const { registrarMovimentoEstoque, registrarMovimentosEstoque } = require("../services/estoqueMovimentoService");
+const { mensagemPublica } = require("../services/errorResponse");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -9,6 +11,26 @@ const entradaInclude = {
   variacaoProduto: {
     include: {
       produto: true,
+    },
+  },
+};
+
+const movimentoInclude = {
+  variacaoProduto: {
+    include: {
+      produto: {
+        select: {
+          id: true,
+          nome: true,
+          imagemUrl: true,
+        },
+      },
+    },
+  },
+  criadoPor: {
+    select: {
+      id: true,
+      nome: true,
     },
   },
 };
@@ -65,6 +87,24 @@ router.get("/entradas", async (req, res) => {
   }
 });
 
+router.get("/movimentos", async (req, res) => {
+  const limite = Math.min(Number(req.query.limite || 80), 200);
+
+  try {
+    const movimentos = await prisma.movimentoEstoque.findMany({
+      where: { lojaId: lojaId(req) },
+      take: limite,
+      orderBy: { criadoEm: "desc" },
+      include: movimentoInclude,
+    });
+
+    res.json(movimentos);
+  } catch (error) {
+    console.error("Erro ao listar movimentos de estoque:", error);
+    res.status(500).json({ error: "Erro ao carregar o historico de estoque." });
+  }
+});
+
 router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"), async (req, res) => {
   const { variacaoProdutoId, quantidade, custoUnitario, outrosCustos, fornecedor, observacao, atualizarCustosProduto } = req.body;
   const variacaoId = Number(variacaoProdutoId);
@@ -85,7 +125,7 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
 
       const { custo, outros } = custosDaEntrada(custoUnitario, outrosCustos);
 
-      await tx.variacaoProduto.update({
+      const variacaoAtualizada = await tx.variacaoProduto.update({
         where: { id: variacaoId },
         data: { estoque: { increment: quantidadeEntrada } },
       });
@@ -99,7 +139,7 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
         }
       }
 
-      return tx.entradaEstoque.create({
+      const entrada = await tx.entradaEstoque.create({
         data: {
           lojaId: lojaAtualId,
           variacaoProdutoId: variacaoId,
@@ -110,6 +150,21 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
           observacao: observacao?.trim() || null,
         },
       });
+
+      await registrarMovimentoEstoque(tx, {
+        lojaId: lojaAtualId,
+        variacaoProdutoId: variacaoId,
+        usuarioId: req.usuario?.id,
+        tipo: "reposicao",
+        quantidade: quantidadeEntrada,
+        saldoAnterior: variacao.estoque,
+        saldoFinal: variacaoAtualizada.estoque,
+        origemTipo: "entrada",
+        origemId: entrada.id,
+        observacao,
+      });
+
+      return entrada;
     }, transacaoEstoqueOpcoes);
 
     const entrada = await prisma.entradaEstoque.findFirst({
@@ -120,7 +175,7 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
     res.status(201).json(entrada);
   } catch (error) {
     console.error("Erro ao registrar entrada de estoque:", error);
-    res.status(400).json({ error: error.message || "Erro ao registrar entrada de estoque." });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel registrar a entrada de estoque.") });
   }
 });
 
@@ -174,6 +229,7 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
         produto.variacoes.map((variacao) => [String(variacao.numeracao), variacao])
       );
       const entradasCriadas = [];
+      const movimentos = [];
 
       for (const item of itensValidos) {
         let variacao = item.variacaoProdutoId
@@ -191,26 +247,39 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
           variacoesPorNumeracao.set(String(variacao.numeracao), variacao);
         }
 
-        await tx.variacaoProduto.update({
+        const variacaoAtualizada = await tx.variacaoProduto.update({
           where: { id: variacao.id },
           data: { estoque: { increment: item.quantidade } },
         });
 
-        entradasCriadas.push(
-          await tx.entradaEstoque.create({
-            data: {
-              lojaId: lojaAtualId,
-              variacaoProdutoId: variacao.id,
-              quantidade: item.quantidade,
-              custoUnitario: custo,
-              outrosCustos: outros,
-              fornecedor: fornecedor?.trim() || null,
-              observacao: observacao?.trim() || null,
-            },
-          })
-        );
+        const entrada = await tx.entradaEstoque.create({
+          data: {
+            lojaId: lojaAtualId,
+            variacaoProdutoId: variacao.id,
+            quantidade: item.quantidade,
+            custoUnitario: custo,
+            outrosCustos: outros,
+            fornecedor: fornecedor?.trim() || null,
+            observacao: observacao?.trim() || null,
+          },
+        });
+        entradasCriadas.push(entrada);
+        movimentos.push({
+          lojaId: lojaAtualId,
+          variacaoProdutoId: variacao.id,
+          usuarioId: req.usuario?.id,
+          tipo: "reposicao",
+          quantidade: item.quantidade,
+          saldoAnterior: variacao.estoque,
+          saldoFinal: variacaoAtualizada.estoque,
+          origemTipo: "entrada",
+          origemId: entrada.id,
+          observacao,
+        });
+        variacao.estoque = variacaoAtualizada.estoque;
       }
 
+      await registrarMovimentosEstoque(tx, movimentos);
       return entradasCriadas;
     }, transacaoEstoqueOpcoes);
 
@@ -226,7 +295,7 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
     res.status(201).json({ mensagem: "Entrada por grade registrada com sucesso.", entradas });
   } catch (error) {
     console.error("Erro ao registrar entrada por grade:", error);
-    res.status(400).json({ error: error.message || "Erro ao registrar entrada por grade." });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel registrar a reposicao. Tente novamente.") });
   }
 });
 

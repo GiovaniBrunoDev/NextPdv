@@ -3,8 +3,11 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { findGifByVideoUrl } = require("../services/videoGifCache");
+const { registrarMovimentoEstoque, registrarMovimentosEstoque } = require("../services/estoqueMovimentoService");
+const { mensagemPublica } = require("../services/errorResponse");
 
 const prisma = new PrismaClient();
+const transacaoOperacionalOpcoes = { maxWait: 10000, timeout: 20000 };
 
 function lojaId(req) {
   return req.loja.id;
@@ -88,7 +91,7 @@ async function baixarImagemProduto(req, res) {
     return res.sendFile(caminhoImagem);
   } catch (error) {
     console.error("Erro ao baixar imagem do produto:", error);
-    return res.status(500).json({ error: "Erro ao baixar imagem", detalhes: error.message });
+    return res.status(500).json({ error: "Nao foi possivel baixar a imagem." });
   }
 }
 
@@ -110,7 +113,7 @@ async function buscarProdutos(req, res) {
     res.json(produtos.map((produto) => imagemCompleta(req, produto)));
   } catch (error) {
     console.error("Erro ao buscar produtos:", error);
-    res.status(500).json({ error: "Erro ao buscar produtos", detalhes: error.message });
+    res.status(500).json({ error: "Nao foi possivel buscar os produtos." });
   }
 }
 
@@ -160,33 +163,54 @@ async function criarProduto(req, res) {
 
     const fornecedorValidoId = await validarFornecedorDaLoja(fornecedorId, lojaId(req));
 
-    const novo = await prisma.produto.create({
-      data: {
-        lojaId: lojaId(req),
-        fornecedorId: fornecedorValidoId,
-        nome: nomeLimpo,
-        marca: marca?.trim() || null,
-        genero: normalizarGenero(genero),
-        preco: precoNumero,
-        custoUnitario: custoNumero,
-        imagemUrl,
-        videoUrl,
-        gifUrl: gifUrlFinal,
-        outrosCustos: outrosCustosNumero,
-        variacoes: {
-          create: variacoes.map((variacao) => ({
-            numeracao: variacao.numeracao,
-            estoque: Number(variacao.estoque || 0),
-          })),
+    const novo = await prisma.$transaction(async (tx) => {
+      const produto = await tx.produto.create({
+        data: {
+          lojaId: lojaId(req),
+          fornecedorId: fornecedorValidoId,
+          nome: nomeLimpo,
+          marca: marca?.trim() || null,
+          genero: normalizarGenero(genero),
+          preco: precoNumero,
+          custoUnitario: custoNumero,
+          imagemUrl,
+          videoUrl,
+          gifUrl: gifUrlFinal,
+          outrosCustos: outrosCustosNumero,
+          variacoes: {
+            create: variacoes.map((variacao) => ({
+              numeracao: variacao.numeracao,
+              estoque: Number(variacao.estoque || 0),
+            })),
+          },
         },
-      },
-      include: produtoInclude(),
-    });
+        include: produtoInclude(),
+      });
+
+      await registrarMovimentosEstoque(
+        tx,
+        produto.variacoes
+          .filter((variacao) => variacao.estoque > 0)
+          .map((variacao) => ({
+            lojaId: lojaId(req),
+            variacaoProdutoId: variacao.id,
+            usuarioId: req.usuario?.id,
+            tipo: "cadastro_produto",
+            quantidade: variacao.estoque,
+            saldoAnterior: 0,
+            saldoFinal: variacao.estoque,
+            origemTipo: "produto",
+            origemId: produto.id,
+          }))
+      );
+
+      return produto;
+    }, transacaoOperacionalOpcoes);
 
     res.status(201).json(novo);
   } catch (error) {
     console.error("Erro ao criar produto:", error);
-    res.status(400).json({ error: "Erro ao criar produto", detalhes: error.message });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel criar o produto. Tente novamente.") });
   }
 }
 
@@ -201,7 +225,7 @@ async function listarProdutos(req, res) {
     res.json(produtos.map((produto) => imagemCompleta(req, produto)));
   } catch (error) {
     console.error("Erro ao listar produtos:", error);
-    res.status(500).json({ error: "Erro ao listar produtos", detalhes: error.message });
+    res.status(500).json({ error: "Nao foi possivel listar os produtos." });
   }
 }
 
@@ -261,7 +285,7 @@ async function atualizarProduto(req, res) {
     });
     res.json(atualizado);
   } catch (error) {
-    res.status(400).json({ error: "Erro ao atualizar", detalhes: error.message });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel atualizar o produto.") });
   }
 }
 
@@ -274,28 +298,50 @@ async function deletarProduto(req, res) {
     await prisma.produto.delete({ where: { id } });
     res.json({ mensagem: "Produto removido com sucesso" });
   } catch (error) {
-    res.status(400).json({ error: "Erro ao deletar", detalhes: error.message });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel remover o produto.") });
   }
 }
 
 async function atualizarEstoqueVariacao(req, res) {
   const id = Number(req.params.id);
   const { estoque } = req.body;
+  const estoqueNumero = Number(estoque);
+
+  if (!Number.isInteger(estoqueNumero) || estoqueNumero < 0) {
+    return res.status(400).json({ error: "Informe um estoque valido." });
+  }
 
   try {
-    const variacao = await prisma.variacaoProduto.findFirst({
-      where: { id, produto: { lojaId: lojaId(req) } },
-    });
-    if (!variacao) return res.status(404).json({ error: "Variacao nao encontrada." });
+    const variacaoAtualizada = await prisma.$transaction(async (tx) => {
+      const variacao = await tx.variacaoProduto.findFirst({
+        where: { id, produto: { lojaId: lojaId(req) } },
+      });
+      if (!variacao) throw new Error("Variacao nao encontrada.");
 
-    const variacaoAtualizada = await prisma.variacaoProduto.update({
-      where: { id },
-      data: { estoque: Number(estoque) },
-    });
+      const atualizada = await tx.variacaoProduto.update({
+        where: { id },
+        data: { estoque: estoqueNumero },
+      });
+
+      if (variacao.estoque !== atualizada.estoque) {
+        await registrarMovimentoEstoque(tx, {
+          lojaId: lojaId(req),
+          variacaoProdutoId: id,
+          usuarioId: req.usuario?.id,
+          tipo: "ajuste_manual",
+          quantidade: atualizada.estoque - variacao.estoque,
+          saldoAnterior: variacao.estoque,
+          saldoFinal: atualizada.estoque,
+          origemTipo: "ajuste",
+        });
+      }
+
+      return atualizada;
+    }, transacaoOperacionalOpcoes);
 
     res.json(variacaoAtualizada);
   } catch (error) {
-    res.status(400).json({ error: "Erro ao atualizar estoque", detalhes: error.message });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel atualizar o estoque.") });
   }
 }
 
@@ -310,28 +356,50 @@ async function deletarVariacao(req, res) {
     await prisma.variacaoProduto.delete({ where: { id } });
     res.json({ mensagem: "Variacao removida com sucesso" });
   } catch (error) {
-    res.status(400).json({ error: "Erro ao deletar variacao", detalhes: error.message });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel remover a variacao.") });
   }
 }
 
 async function adicionarVariacao(req, res) {
   const produtoId = Number(req.params.id);
   const { numeracao, estoque } = req.body;
+  const estoqueNumero = Number(estoque);
 
   const produto = await prisma.produto.findFirst({ where: { id: produtoId, lojaId: lojaId(req) } });
   if (!produto) return res.status(404).json({ error: "Produto nao encontrado." });
+  if (!String(numeracao || "").trim() || !Number.isInteger(estoqueNumero) || estoqueNumero < 0) {
+    return res.status(400).json({ error: "Informe numeracao e estoque validos." });
+  }
 
   try {
-    const variacao = await prisma.variacaoProduto.create({
-      data: {
-        produtoId,
-        numeracao,
-        estoque: Number(estoque),
-      },
-    });
+    const variacao = await prisma.$transaction(async (tx) => {
+      const criada = await tx.variacaoProduto.create({
+        data: {
+          produtoId,
+          numeracao: String(numeracao).trim(),
+          estoque: estoqueNumero,
+        },
+      });
+
+      if (estoqueNumero > 0) {
+        await registrarMovimentoEstoque(tx, {
+          lojaId: lojaId(req),
+          variacaoProdutoId: criada.id,
+          usuarioId: req.usuario?.id,
+          tipo: "cadastro_variacao",
+          quantidade: estoqueNumero,
+          saldoAnterior: 0,
+          saldoFinal: estoqueNumero,
+          origemTipo: "produto",
+          origemId: produtoId,
+        });
+      }
+
+      return criada;
+    }, transacaoOperacionalOpcoes);
     res.status(201).json(variacao);
   } catch (error) {
-    res.status(400).json({ error: "Erro ao adicionar variacao", detalhes: error.message });
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel adicionar a variacao.") });
   }
 }
 
