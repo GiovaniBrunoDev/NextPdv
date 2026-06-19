@@ -2,6 +2,7 @@ const express = require("express");
 const { PrismaClient } = require("@prisma/client");
 const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
 const { registrarVendaNoCaixa } = require("../services/caixaService");
+const { registrarFinanceiroVenda } = require("../services/financeiroService");
 const { registrarMovimentoEstoque } = require("../services/estoqueMovimentoService");
 const { mensagemPublica } = require("../services/errorResponse");
 
@@ -71,6 +72,7 @@ function includeVendaCompleta() {
   return {
     cliente: true,
     itens: { include: { variacaoProduto: { include: { produto: true } } } },
+    pagamentos: { include: { conta: true, lancamentos: true } },
   };
 }
 
@@ -503,10 +505,11 @@ router.get("/hoje", async (req, res) => {
 router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
   try {
     const formaPagamento = String(req.body.formaPagamento || "").trim();
+    const pagamentos = Array.isArray(req.body.pagamentos) ? req.body.pagamentos : [];
     const desconto = Math.max(numero(req.body.desconto), 0);
     const entregador = String(req.body.entregador || "").trim() || null;
 
-    if (!formaPagamento) {
+    if (!formaPagamento && pagamentos.length === 0) {
       return res.status(400).json({ error: "Informe a forma de pagamento." });
     }
 
@@ -544,7 +547,7 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
           tipoEntrega: pedido.tipoEntrega,
           taxaEntrega: taxaEntregaFinal,
           entregador: pedido.tipoEntrega === "entrega" ? entregador : null,
-          formaPagamento,
+          formaPagamento: formaPagamento || "Misto",
           subtotalProdutos,
           desconto: descontoAplicado,
           endereco: pedido.endereco,
@@ -581,6 +584,15 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
         usuarioId: req.usuario?.id,
         vendaId: novaVenda.id,
         total: novaVenda.total,
+        formaPagamento,
+        pagamentos,
+      });
+
+      await registrarFinanceiroVenda(tx, {
+        lojaId: lojaId(req),
+        usuarioId: req.usuario?.id,
+        venda: novaVenda,
+        pagamentos,
         formaPagamento,
       });
 

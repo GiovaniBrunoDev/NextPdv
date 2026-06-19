@@ -3,6 +3,7 @@ const { PrismaClient } = require("@prisma/client");
 const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
 const { registrarMovimentoEstoque, registrarMovimentosEstoque } = require("../services/estoqueMovimentoService");
 const { mensagemPublica } = require("../services/errorResponse");
+const { garantirCodigosVariacoes } = require("../services/codigoBarrasService");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -36,8 +37,8 @@ const movimentoInclude = {
 };
 
 const transacaoEstoqueOpcoes = {
-  maxWait: 10000,
-  timeout: 20000,
+  maxWait: 15000,
+  timeout: 60000,
 };
 
 function lojaId(req) {
@@ -102,6 +103,32 @@ router.get("/movimentos", async (req, res) => {
   } catch (error) {
     console.error("Erro ao listar movimentos de estoque:", error);
     res.status(500).json({ error: "Erro ao carregar o historico de estoque." });
+  }
+});
+
+router.post("/codigos-barras/gerar", assinaturaAtivaRequired, requireRole("admin", "gerente"), async (req, res) => {
+  try {
+    const variacoes = await prisma.variacaoProduto.findMany({
+      where: { produto: { lojaId: lojaId(req) } },
+      select: { id: true, codigoBarras: true },
+    });
+
+    const semCodigo = variacoes.filter((variacao) => !variacao.codigoBarras);
+    if (semCodigo.length) {
+      await prisma.$transaction(
+        (tx) => garantirCodigosVariacoes(tx, lojaId(req), semCodigo),
+        transacaoEstoqueOpcoes
+      );
+    }
+
+    res.json({
+      mensagem: semCodigo.length ? "Codigos de barras gerados com sucesso." : "Todos os itens ja possuem codigo de barras.",
+      gerados: semCodigo.length,
+      total: variacoes.length,
+    });
+  } catch (error) {
+    console.error("Erro ao gerar codigos de barras:", error);
+    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel gerar os codigos de barras.") });
   }
 });
 

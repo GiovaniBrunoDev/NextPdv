@@ -2,6 +2,7 @@ const express = require("express");
 const { PrismaClient } = require("@prisma/client");
 const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
 const { registrarVendaNoCaixa } = require("../services/caixaService");
+const { registrarFinanceiroVenda } = require("../services/financeiroService");
 const { registrarMovimentoEstoque } = require("../services/estoqueMovimentoService");
 const { mensagemPublica } = require("../services/errorResponse");
 
@@ -32,6 +33,12 @@ const vendaInclude = {
       },
     },
   },
+  pagamentos: {
+    include: {
+      conta: true,
+      lancamentos: true,
+    },
+  },
 };
 
 function lojaId(req) {
@@ -56,6 +63,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
     subtotalProdutos,
     desconto,
     formaPagamento,
+    pagamentos,
     tipoEntrega,
     taxaEntrega,
     endereco,
@@ -188,6 +196,15 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
         usuarioId: req.usuario?.id,
         vendaId: novaVenda.id,
         total: novaVenda.total,
+        formaPagamento,
+        pagamentos,
+      });
+
+      await registrarFinanceiroVenda(tx, {
+        lojaId: lojaId(req),
+        usuarioId: req.usuario?.id,
+        venda: novaVenda,
+        pagamentos,
         formaPagamento,
       });
 

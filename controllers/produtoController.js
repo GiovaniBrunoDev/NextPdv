@@ -5,6 +5,7 @@ const fs = require("fs");
 const { findGifByVideoUrl } = require("../services/videoGifCache");
 const { registrarMovimentoEstoque, registrarMovimentosEstoque } = require("../services/estoqueMovimentoService");
 const { mensagemPublica } = require("../services/errorResponse");
+const { garantirCodigosVariacoes } = require("../services/codigoBarrasService");
 
 const prisma = new PrismaClient();
 const transacaoOperacionalOpcoes = { maxWait: 10000, timeout: 20000 };
@@ -97,15 +98,33 @@ async function baixarImagemProduto(req, res) {
 
 async function buscarProdutos(req, res) {
   const { q } = req.query;
+  const termo = String(q || "").trim();
 
   try {
     const produtos = await prisma.produto.findMany({
       where: {
         lojaId: lojaId(req),
-        nome: {
-          contains: q || "",
-          mode: "insensitive",
-        },
+        OR: [
+          {
+            nome: {
+              contains: termo,
+              mode: "insensitive",
+            },
+          },
+          {
+            marca: {
+              contains: termo,
+              mode: "insensitive",
+            },
+          },
+          {
+            variacoes: {
+              some: {
+                codigoBarras: termo || undefined,
+              },
+            },
+          },
+        ],
       },
       include: produtoInclude(),
     });
@@ -204,7 +223,12 @@ async function criarProduto(req, res) {
           }))
       );
 
-      return produto;
+      await garantirCodigosVariacoes(tx, lojaId(req), produto.variacoes);
+
+      return tx.produto.findUnique({
+        where: { id: produto.id },
+        include: produtoInclude(),
+      });
     }, transacaoOperacionalOpcoes);
 
     res.status(201).json(novo);
@@ -381,6 +405,8 @@ async function adicionarVariacao(req, res) {
         },
       });
 
+      const [criadaComCodigo] = await garantirCodigosVariacoes(tx, lojaId(req), [criada]);
+
       if (estoqueNumero > 0) {
         await registrarMovimentoEstoque(tx, {
           lojaId: lojaId(req),
@@ -395,7 +421,7 @@ async function adicionarVariacao(req, res) {
         });
       }
 
-      return criada;
+      return criadaComCodigo;
     }, transacaoOperacionalOpcoes);
     res.status(201).json(variacao);
   } catch (error) {

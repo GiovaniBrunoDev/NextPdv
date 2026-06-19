@@ -1,6 +1,20 @@
+const { FORMAS, normalizarForma } = require("./financeiroService");
+
 function numero(valor, fallback = 0) {
   const parsed = Number(valor ?? fallback);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function inicioDoDia(data = new Date()) {
+  const valor = new Date(data);
+  valor.setHours(0, 0, 0, 0);
+  return valor;
+}
+
+function fimDoDia(data = new Date()) {
+  const valor = new Date(data);
+  valor.setHours(23, 59, 59, 999);
+  return valor;
 }
 
 function calcularResumoCaixa(caixa) {
@@ -57,9 +71,46 @@ async function buscarCaixaAberto(tx, lojaId) {
   });
 }
 
-async function registrarVendaNoCaixa(tx, { lojaId, usuarioId, vendaId, total, formaPagamento }) {
-  const caixa = await buscarCaixaAberto(tx, lojaId);
-  if (!caixa) return null;
+async function buscarOuCriarCaixaDoDia(tx, lojaId, usuarioId) {
+  const hoje = new Date();
+  const caixa = await tx.caixa.findFirst({
+    where: {
+      lojaId,
+      status: "aberto",
+      abertoEm: { gte: inicioDoDia(hoje), lte: fimDoDia(hoje) },
+    },
+    orderBy: { abertoEm: "desc" },
+  });
+
+  if (caixa) return caixa;
+
+  return tx.caixa.create({
+    data: {
+      lojaId,
+      abertoPorId: usuarioId || null,
+      valorInicial: 0,
+      observacaoAbertura: "Caixa automatico do dia.",
+    },
+  });
+}
+
+function valorDinheiroDaVenda(total, formaPagamento, pagamentos) {
+  if (Array.isArray(pagamentos) && pagamentos.length) {
+    return pagamentos.reduce((soma, pagamento) => {
+      const forma = normalizarForma(pagamento.forma || pagamento.formaPagamento);
+      if (forma !== FORMAS.DINHEIRO) return soma;
+      return soma + numero(pagamento.valorBruto ?? pagamento.valor ?? pagamento.total);
+    }, 0);
+  }
+
+  return normalizarForma(formaPagamento) === FORMAS.DINHEIRO ? numero(total) : 0;
+}
+
+async function registrarVendaNoCaixa(tx, { lojaId, usuarioId, vendaId, total, formaPagamento, pagamentos }) {
+  const valorDinheiro = valorDinheiroDaVenda(total, formaPagamento, pagamentos);
+  if (valorDinheiro <= 0) return null;
+
+  const caixa = await buscarOuCriarCaixaDoDia(tx, lojaId, usuarioId);
 
   return tx.movimentoCaixa.create({
     data: {
@@ -69,8 +120,8 @@ async function registrarVendaNoCaixa(tx, { lojaId, usuarioId, vendaId, total, fo
       criadoPorId: usuarioId || null,
       tipo: "venda",
       descricao: `Venda #${vendaId}`,
-      valor: numero(total),
-      formaPagamento: formaPagamento || null,
+      valor: numero(valorDinheiro),
+      formaPagamento: FORMAS.DINHEIRO,
     },
   });
 }
@@ -79,5 +130,6 @@ module.exports = {
   calcularResumoCaixa,
   registrarVendaNoCaixa,
   buscarCaixaAberto,
+  buscarOuCriarCaixaDoDia,
   numero,
 };
