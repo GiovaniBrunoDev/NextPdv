@@ -83,11 +83,9 @@ async function notificarNovoPedido(client, { lojaId, pedido, criadoPorId, criado
 
   const cliente = pedido.cliente?.nome || "Cliente não informado";
   const autor = criadoPorNome || "Equipe";
-  const entrega = pedido.tipoEntrega === "entrega" ? "Entrega" : "Retirada";
-
   return enviarParaInscricoes(client, inscricoes, {
-    title: `Novo pedido de ${autor}`,
-    body: `Pedido #${pedido.id} · ${cliente} · ${formatarMoeda(pedido.total)} · ${entrega}`,
+    title: "Novo pedido",
+    body: `${autor} criou o pedido #${pedido.id} · ${cliente} · ${formatarMoeda(pedido.total)}`,
     icon: "/lojia-icon.svg",
     badge: "/lojia-icon.svg",
     tag: `pedido-${pedido.id}`,
