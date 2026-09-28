@@ -11,6 +11,12 @@ const prisma = new PrismaClient();
 const transacaoOperacionalOpcoes = { maxWait: 10000, timeout: 20000 };
 
 const vendaInclude = {
+  criadoPor: {
+    select: {
+      id: true,
+      nome: true,
+    },
+  },
   cliente: {
     select: {
       id: true,
@@ -43,6 +49,14 @@ const vendaInclude = {
 
 function lojaId(req) {
   return req.loja.id;
+}
+
+function escopoVenda(req, extra = {}) {
+  return {
+    lojaId: lojaId(req),
+    ...(req.membroLoja?.vendasPropriasApenas ? { criadoPorId: req.usuario.id } : {}),
+    ...extra,
+  };
 }
 
 function numeroValido(valor, fallback = 0) {
@@ -101,6 +115,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
       const novaVenda = await tx.venda.create({
         data: {
           lojaId: lojaId(req),
+          criadoPorId: req.usuario?.id || null,
           total,
           subtotalProdutos: subtotalProdutos === undefined ? null : Number(subtotalProdutos || 0),
           desconto: desconto === undefined ? 0 : Number(desconto || 0),
@@ -221,7 +236,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
 router.get("/", async (req, res) => {
   try {
     const vendas = await prisma.venda.findMany({
-      where: { lojaId: lojaId(req) },
+      where: escopoVenda(req),
       orderBy: { data: "desc" },
       include: vendaInclude,
     });
@@ -238,7 +253,7 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), asy
   const { formaPagamento, tipoEntrega, taxaEntrega, endereco, entregador, clienteId } = req.body;
 
   try {
-    const venda = await prisma.venda.findFirst({ where: { id: vendaId, lojaId: lojaId(req) } });
+    const venda = await prisma.venda.findFirst({ where: escopoVenda(req, { id: vendaId }) });
     if (!venda) return res.status(404).json({ error: "Venda nao encontrada." });
 
     if (clienteId) {
@@ -275,7 +290,7 @@ router.delete("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), 
 
   try {
     const venda = await prisma.venda.findFirst({
-      where: { id, lojaId: lojaId(req) },
+      where: escopoVenda(req, { id }),
       include: { itens: true },
     });
 
@@ -325,7 +340,7 @@ router.post("/troca", assinaturaAtivaRequired, requireRole("admin", "gerente", "
   try {
     const vendaAtualizada = await prisma.$transaction(async (tx) => {
       const venda = await tx.venda.findFirst({
-        where: { id: Number(vendaId), lojaId: lojaId(req) },
+        where: escopoVenda(req, { id: Number(vendaId) }),
         include: { itens: true },
       });
       if (!venda) throw new Error("Venda nao encontrada.");

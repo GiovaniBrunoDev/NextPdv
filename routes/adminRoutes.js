@@ -56,6 +56,7 @@ async function usuarioAdminPayload(usuario) {
       lojaSlug: membro.loja?.slug,
       papel: membro.papel,
       ativo: membro.ativo,
+      vendasPropriasApenas: Boolean(membro.vendasPropriasApenas),
     })),
     totais: {
       lojas: usuario._count?.membros || 0,
@@ -246,7 +247,7 @@ router.delete("/usuarios/:id", async (req, res) => {
 
 router.put("/membros/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { papel, ativo } = req.body;
+  const { papel, ativo, vendasPropriasApenas } = req.body;
   const data = {};
 
   if (papel !== undefined) {
@@ -256,6 +257,7 @@ router.put("/membros/:id", async (req, res) => {
     data.papel = papel;
   }
   if (ativo !== undefined) data.ativo = Boolean(ativo);
+  if (vendasPropriasApenas !== undefined) data.vendasPropriasApenas = Boolean(vendasPropriasApenas);
 
   const membro = await prisma.membroLoja.update({
     where: { id },

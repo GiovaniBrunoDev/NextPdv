@@ -110,6 +110,11 @@ function requireRole(...perfisPermitidos) {
   };
 }
 
+function acessoAmploRequired(req, res, next) {
+  if (req.usuario?.superadmin || !req.membroLoja?.vendasPropriasApenas) return next();
+  return res.status(403).json({ error: "Seu acesso está limitado às suas vendas." });
+}
+
 function requireSuperadmin(req, res, next) {
   if (req.usuario?.superadmin) return next();
   return res.status(403).json({ error: "Acesso restrito ao superadmin." });
@@ -126,6 +131,7 @@ module.exports = {
   lojaRequired,
   assinaturaAtivaRequired,
   requireRole,
+  acessoAmploRequired,
   requireSuperadmin,
   assinaturaOperacionalAtiva,
   canAccess,

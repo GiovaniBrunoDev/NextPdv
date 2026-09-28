@@ -543,6 +543,7 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
       const novaVenda = await tx.venda.create({
         data: {
           lojaId: lojaId(req),
+          criadoPorId: req.usuario?.id || null,
           clienteId: pedido.clienteId || null,
           tipoEntrega: pedido.tipoEntrega,
           taxaEntrega: taxaEntregaFinal,

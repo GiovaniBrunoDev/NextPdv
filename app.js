@@ -28,7 +28,7 @@ const mobileUploadRoutes = require("./routes/mobileUploadRoutes");
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const equipeRoutes = require("./routes/equipeRoutes");
-const { authRequired, lojaRequired } = require("./middlewares/auth");
+const { authRequired, lojaRequired, acessoAmploRequired } = require("./middlewares/auth");
 
 // middlewares
 app.use(cors());
@@ -46,15 +46,15 @@ app.use("/admin", adminRoutes);
 app.use("/mobile-upload", mobileUploadRoutes);
 app.use('/produtos', authRequired, lojaRequired, produtoRoutes);
 app.use('/vendas', authRequired, lojaRequired, vendaRoutes);
-app.use("/metas", authRequired, lojaRequired, metasRoutes);
+app.use("/metas", authRequired, lojaRequired, acessoAmploRequired, metasRoutes);
 app.use('/clientes', authRequired, lojaRequired, clienteRoutes);
-app.use("/pedidos", authRequired, lojaRequired, pedidosRoutes);
-app.use("/relatorios", authRequired, lojaRequired, relatorioRoutes);
-app.use("/estoque", authRequired, lojaRequired, estoqueRoutes);
-app.use("/inventarios", authRequired, lojaRequired, inventarioRoutes);
-app.use("/caixa", authRequired, lojaRequired, caixaRoutes);
-app.use("/financeiro", authRequired, lojaRequired, financeiroRoutes);
-app.use("/fornecedores", authRequired, lojaRequired, fornecedorRoutes);
+app.use("/pedidos", authRequired, lojaRequired, acessoAmploRequired, pedidosRoutes);
+app.use("/relatorios", authRequired, lojaRequired, acessoAmploRequired, relatorioRoutes);
+app.use("/estoque", authRequired, lojaRequired, acessoAmploRequired, estoqueRoutes);
+app.use("/inventarios", authRequired, lojaRequired, acessoAmploRequired, inventarioRoutes);
+app.use("/caixa", authRequired, lojaRequired, acessoAmploRequired, caixaRoutes);
+app.use("/financeiro", authRequired, lojaRequired, acessoAmploRequired, financeiroRoutes);
+app.use("/fornecedores", authRequired, lojaRequired, acessoAmploRequired, fornecedorRoutes);
 app.use("/entregadores", authRequired, lojaRequired, entregadorRoutes);
 app.use("/equipe", authRequired, lojaRequired, equipeRoutes);
 

@@ -20,6 +20,7 @@ function membroPayload(membro) {
     id: membro.id,
     papel: membro.papel,
     ativo: membro.ativo,
+    vendasPropriasApenas: Boolean(membro.vendasPropriasApenas),
     criadoEm: membro.criadoEm,
     usuario: {
       id: membro.usuario.id,
@@ -64,6 +65,7 @@ router.post("/", assinaturaAtivaRequired, async (req, res) => {
   const telefone = textoLimpo(req.body.telefone) || null;
   const senha = String(req.body.senha || "");
   const papel = textoLimpo(req.body.papel || "vendedor").toLowerCase();
+  const vendasPropriasApenas = Boolean(req.body.vendasPropriasApenas);
 
   if (!nome || !email) {
     return res.status(400).json({ error: "Informe o nome e o e-mail da usuária." });
@@ -107,11 +109,11 @@ router.post("/", assinaturaAtivaRequired, async (req, res) => {
         const membro = vinculo
           ? await tx.membroLoja.update({
               where: { id: vinculo.id },
-              data: { papel, ativo: true },
+              data: { papel, ativo: true, vendasPropriasApenas },
               include: { usuario: true },
             })
           : await tx.membroLoja.create({
-              data: { lojaId: req.loja.id, usuarioId: usuarioExistente.id, papel },
+              data: { lojaId: req.loja.id, usuarioId: usuarioExistente.id, papel, vendasPropriasApenas },
               include: { usuario: true },
             });
 
@@ -123,7 +125,7 @@ router.post("/", assinaturaAtivaRequired, async (req, res) => {
         data: { nome, email, telefone, senhaHash },
       });
       const membro = await tx.membroLoja.create({
-        data: { lojaId: req.loja.id, usuarioId: usuario.id, papel },
+        data: { lojaId: req.loja.id, usuarioId: usuario.id, papel, vendasPropriasApenas },
         include: { usuario: true },
       });
 
@@ -149,6 +151,9 @@ router.put("/:id", assinaturaAtivaRequired, async (req, res) => {
   const id = Number(req.params.id);
   const papel = req.body.papel === undefined ? undefined : textoLimpo(req.body.papel).toLowerCase();
   const ativo = req.body.ativo === undefined ? undefined : Boolean(req.body.ativo);
+  const vendasPropriasApenas = req.body.vendasPropriasApenas === undefined
+    ? undefined
+    : Boolean(req.body.vendasPropriasApenas);
 
   if (!Number.isInteger(id)) return res.status(400).json({ error: "Membro inválido." });
   if (papel !== undefined && !PERFIS_EQUIPE.includes(papel)) {
@@ -174,6 +179,7 @@ router.put("/:id", assinaturaAtivaRequired, async (req, res) => {
       data: {
         ...(papel !== undefined ? { papel } : {}),
         ...(ativo !== undefined ? { ativo } : {}),
+        ...(vendasPropriasApenas !== undefined ? { vendasPropriasApenas } : {}),
       },
       include: { usuario: true },
     });

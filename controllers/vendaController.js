@@ -19,6 +19,8 @@ async function registrarVenda(req, res) {
   try {
     const novaVenda = await prisma.venda.create({
       data: {
+        lojaId: req.loja?.id,
+        criadoPorId: req.usuario?.id || null,
         total,
         formaPagamento,
         tipoEntrega,

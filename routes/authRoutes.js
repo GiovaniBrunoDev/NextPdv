@@ -46,6 +46,7 @@ function membroPayload(membro) {
   return {
     id: membro.id,
     papel: membro.papel,
+    vendasPropriasApenas: Boolean(membro.vendasPropriasApenas),
     loja: lojaPayload(membro.loja),
   };
 }

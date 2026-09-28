@@ -8,9 +8,9 @@ datasource db {
 }
 
 model Loja {
-  id                     Int                    @id @default(autoincrement())
+  id                     Int                     @id @default(autoincrement())
   nome                   String
-  slug                   String                 @unique
+  slug                   String                  @unique
   email                  String?
   telefone               String?
   documento              String?
@@ -19,9 +19,9 @@ model Loja {
   cidade                 String?
   estado                 String?
   cep                    String?
-  ativa                  Boolean                @default(true)
-  criadaEm               DateTime               @default(now())
-  atualizadaEm           DateTime               @updatedAt
+  ativa                  Boolean                 @default(true)
+  criadaEm               DateTime                @default(now())
+  atualizadaEm           DateTime                @updatedAt
   produtos               Produto[]
   clientes               Cliente[]
   vendas                 Venda[]
@@ -45,35 +45,37 @@ model Loja {
 }
 
 model Usuario {
-  id                       Int                 @id @default(autoincrement())
+  id                       Int                    @id @default(autoincrement())
   nome                     String
-  email                    String              @unique
+  email                    String                 @unique
   telefone                 String?
   senhaHash                String
-  superadmin               Boolean             @default(false)
-  ativo                    Boolean             @default(true)
-  criadoEm                 DateTime            @default(now())
-  atualizadoEm             DateTime            @updatedAt
+  superadmin               Boolean                @default(false)
+  ativo                    Boolean                @default(true)
+  criadoEm                 DateTime               @default(now())
+  atualizadoEm             DateTime               @updatedAt
   membros                  MembroLoja[]
   convites                 ConviteLoja[]
-  caixasAbertos            Caixa[]             @relation("CaixaAbertoPor")
-  caixasFechados           Caixa[]             @relation("CaixaFechadoPor")
-  movimentosCaixaCriados   MovimentoCaixa[]    @relation("MovimentoCaixaCriadoPor")
-  movimentosEstoqueCriados MovimentoEstoque[]  @relation("MovimentoEstoqueCriadoPor")
-  inventariosCriados       InventarioEstoque[] @relation("InventarioCriadoPor")
-  lancamentosFinanceiros    LancamentoFinanceiro[] @relation("LancamentoFinanceiroCriadoPor")
+  caixasAbertos            Caixa[]                @relation("CaixaAbertoPor")
+  caixasFechados           Caixa[]                @relation("CaixaFechadoPor")
+  movimentosCaixaCriados   MovimentoCaixa[]       @relation("MovimentoCaixaCriadoPor")
+  movimentosEstoqueCriados MovimentoEstoque[]     @relation("MovimentoEstoqueCriadoPor")
+  inventariosCriados       InventarioEstoque[]    @relation("InventarioCriadoPor")
+  lancamentosFinanceiros   LancamentoFinanceiro[] @relation("LancamentoFinanceiroCriadoPor")
+  vendasCriadas            Venda[]                @relation("VendaCriadaPor")
 }
 
 model MembroLoja {
-  id           Int      @id @default(autoincrement())
-  usuarioId    Int
-  lojaId       Int
-  papel        String
-  ativo        Boolean  @default(true)
-  criadoEm     DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
-  usuario      Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  loja         Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  id                   Int      @id @default(autoincrement())
+  usuarioId            Int
+  lojaId               Int
+  papel                String
+  ativo                Boolean  @default(true)
+  vendasPropriasApenas Boolean  @default(false)
+  criadoEm             DateTime @default(now())
+  atualizadoEm         DateTime @updatedAt
+  usuario              Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  loja                 Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
 
   @@unique([usuarioId, lojaId])
 }
@@ -200,24 +202,28 @@ model ItemVenda {
 }
 
 model Venda {
-  id               Int              @id @default(autoincrement())
-  lojaId           Int
-  data             DateTime         @default(now())
-  total            Float
-  subtotalProdutos Float?
-  desconto         Float?           @default(0)
-  formaPagamento   String?
-  tipoEntrega      String?
-  taxaEntrega      Float?
-  entregador       String?
-  endereco         String?
-  clienteId        Int?
-  itens            ItemVenda[]
-  movimentosCaixa  MovimentoCaixa[]
-  pagamentos       VendaPagamento[]
+  id                     Int                    @id @default(autoincrement())
+  lojaId                 Int
+  criadoPorId            Int?
+  data                   DateTime               @default(now())
+  total                  Float
+  subtotalProdutos       Float?
+  desconto               Float?                 @default(0)
+  formaPagamento         String?
+  tipoEntrega            String?
+  taxaEntrega            Float?
+  entregador             String?
+  endereco               String?
+  clienteId              Int?
+  itens                  ItemVenda[]
+  movimentosCaixa        MovimentoCaixa[]
+  pagamentos             VendaPagamento[]
   lancamentosFinanceiros LancamentoFinanceiro[]
-  cliente          Cliente?         @relation(fields: [clienteId], references: [id])
-  loja             Loja             @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  cliente                Cliente?               @relation(fields: [clienteId], references: [id])
+  loja                   Loja                   @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  criadoPor              Usuario?               @relation("VendaCriadaPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([lojaId, criadoPorId, data])
 }
 
 model Caixa {
@@ -282,39 +288,39 @@ model Cliente {
 }
 
 model LancamentoFinanceiro {
-  id             Int       @id @default(autoincrement())
-  lojaId         Int
-  contaId        Int?
-  clienteId      Int?
-  vendaId        Int?
+  id               Int                @id @default(autoincrement())
+  lojaId           Int
+  contaId          Int?
+  clienteId        Int?
+  vendaId          Int?
   vendaPagamentoId Int?
-  criadoPorId    Int?
-  recorrenciaId  Int?
-  tipo           String
-  origem         String    @default("manual")
-  categoria      String
-  descricao      String
-  valor          Float
-  valorBruto     Float?
-  valorTaxa      Float?    @default(0)
-  valorLiquido   Float?
-  formaPagamento String?
-  parcelaNumero  Int?
-  parcelasTotal  Int?
-  status         String    @default("pago")
-  data           DateTime  @default(now())
-  vencimento     DateTime?
-  pagoEm         DateTime?
-  observacao     String?
-  criadoEm       DateTime  @default(now())
-  atualizadoEm   DateTime  @updatedAt
-  loja           Loja      @relation(fields: [lojaId], references: [id], onDelete: Cascade)
-  conta          ContaFinanceira? @relation(fields: [contaId], references: [id], onDelete: SetNull)
-  cliente        Cliente?  @relation(fields: [clienteId], references: [id], onDelete: SetNull)
-  venda          Venda?    @relation(fields: [vendaId], references: [id], onDelete: Cascade)
-  vendaPagamento VendaPagamento? @relation(fields: [vendaPagamentoId], references: [id], onDelete: Cascade)
-  criadoPor      Usuario?  @relation("LancamentoFinanceiroCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
-  recorrencia    DespesaRecorrente? @relation(fields: [recorrenciaId], references: [id], onDelete: SetNull)
+  criadoPorId      Int?
+  recorrenciaId    Int?
+  tipo             String
+  origem           String             @default("manual")
+  categoria        String
+  descricao        String
+  valor            Float
+  valorBruto       Float?
+  valorTaxa        Float?             @default(0)
+  valorLiquido     Float?
+  formaPagamento   String?
+  parcelaNumero    Int?
+  parcelasTotal    Int?
+  status           String             @default("pago")
+  data             DateTime           @default(now())
+  vencimento       DateTime?
+  pagoEm           DateTime?
+  observacao       String?
+  criadoEm         DateTime           @default(now())
+  atualizadoEm     DateTime           @updatedAt
+  loja             Loja               @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  conta            ContaFinanceira?   @relation(fields: [contaId], references: [id], onDelete: SetNull)
+  cliente          Cliente?           @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  venda            Venda?             @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+  vendaPagamento   VendaPagamento?    @relation(fields: [vendaPagamentoId], references: [id], onDelete: Cascade)
+  criadoPor        Usuario?           @relation("LancamentoFinanceiroCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+  recorrencia      DespesaRecorrente? @relation(fields: [recorrenciaId], references: [id], onDelete: SetNull)
 
   @@index([lojaId, data])
   @@index([lojaId, status, vencimento])
@@ -325,16 +331,16 @@ model LancamentoFinanceiro {
 }
 
 model ContaFinanceira {
-  id           Int       @id @default(autoincrement())
+  id           Int                    @id @default(autoincrement())
   lojaId       Int
   nome         String
   tipo         String
-  saldoInicial Float     @default(0)
-  ativo        Boolean   @default(true)
-  padrao       Boolean   @default(false)
-  criadoEm     DateTime  @default(now())
-  atualizadoEm DateTime  @updatedAt
-  loja         Loja      @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  saldoInicial Float                  @default(0)
+  ativo        Boolean                @default(true)
+  padrao       Boolean                @default(false)
+  criadoEm     DateTime               @default(now())
+  atualizadoEm DateTime               @updatedAt
+  loja         Loja                   @relation(fields: [lojaId], references: [id], onDelete: Cascade)
   lancamentos  LancamentoFinanceiro[]
   pagamentos   VendaPagamento[]
   recorrencias DespesaRecorrente[]
@@ -344,41 +350,41 @@ model ContaFinanceira {
 }
 
 model ConfiguracaoFinanceira {
-  id                Int      @id @default(autoincrement())
-  lojaId            Int      @unique
-  taxaDebito        Float    @default(0)
-  prazoDebitoDias   Int      @default(1)
-  taxaCredito       Float    @default(0)
-  prazoCreditoDias  Int      @default(30)
-  parcelasCreditoMax Int     @default(6)
-  contaDinheiroId   Int?
-  contaPixId        Int?
-  contaDebitoId     Int?
-  contaCreditoId    Int?
-  contaPrazoId      Int?
-  criadoEm          DateTime @default(now())
-  atualizadoEm      DateTime @updatedAt
-  loja              Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  id                 Int      @id @default(autoincrement())
+  lojaId             Int      @unique
+  taxaDebito         Float    @default(0)
+  prazoDebitoDias    Int      @default(1)
+  taxaCredito        Float    @default(0)
+  prazoCreditoDias   Int      @default(30)
+  parcelasCreditoMax Int      @default(6)
+  contaDinheiroId    Int?
+  contaPixId         Int?
+  contaDebitoId      Int?
+  contaCreditoId     Int?
+  contaPrazoId       Int?
+  criadoEm           DateTime @default(now())
+  atualizadoEm       DateTime @updatedAt
+  loja               Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
 }
 
 model VendaPagamento {
-  id             Int      @id @default(autoincrement())
-  lojaId         Int
-  vendaId        Int
-  contaId        Int?
-  forma          String
-  valorBruto     Float
-  valorTaxa      Float    @default(0)
-  valorLiquido   Float
-  parcelas       Int      @default(1)
-  status         String   @default("pago")
-  vencimento     DateTime?
-  criadoEm       DateTime @default(now())
-  atualizadoEm   DateTime @updatedAt
-  loja           Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
-  venda          Venda    @relation(fields: [vendaId], references: [id], onDelete: Cascade)
-  conta          ContaFinanceira? @relation(fields: [contaId], references: [id], onDelete: SetNull)
-  lancamentos    LancamentoFinanceiro[]
+  id           Int                    @id @default(autoincrement())
+  lojaId       Int
+  vendaId      Int
+  contaId      Int?
+  forma        String
+  valorBruto   Float
+  valorTaxa    Float                  @default(0)
+  valorLiquido Float
+  parcelas     Int                    @default(1)
+  status       String                 @default("pago")
+  vencimento   DateTime?
+  criadoEm     DateTime               @default(now())
+  atualizadoEm DateTime               @updatedAt
+  loja         Loja                   @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  venda        Venda                  @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+  conta        ContaFinanceira?       @relation(fields: [contaId], references: [id], onDelete: SetNull)
+  lancamentos  LancamentoFinanceiro[]
 
   @@index([lojaId, vendaId])
   @@index([lojaId, forma])
@@ -386,7 +392,7 @@ model VendaPagamento {
 }
 
 model DespesaRecorrente {
-  id             Int      @id @default(autoincrement())
+  id             Int                    @id @default(autoincrement())
   lojaId         Int
   contaId        Int?
   descricao      String
@@ -395,11 +401,11 @@ model DespesaRecorrente {
   formaPagamento String?
   diaVencimento  Int
   proximaGeracao DateTime
-  ativo          Boolean  @default(true)
-  criadoEm       DateTime @default(now())
-  atualizadoEm   DateTime @updatedAt
-  loja           Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
-  conta          ContaFinanceira? @relation(fields: [contaId], references: [id], onDelete: SetNull)
+  ativo          Boolean                @default(true)
+  criadoEm       DateTime               @default(now())
+  atualizadoEm   DateTime               @updatedAt
+  loja           Loja                   @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  conta          ContaFinanceira?       @relation(fields: [contaId], references: [id], onDelete: SetNull)
   lancamentos    LancamentoFinanceiro[]
 
   @@index([lojaId, ativo, proximaGeracao])
