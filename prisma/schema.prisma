@@ -63,6 +63,7 @@ model Usuario {
   inventariosCriados       InventarioEstoque[]    @relation("InventarioCriadoPor")
   lancamentosFinanceiros   LancamentoFinanceiro[] @relation("LancamentoFinanceiroCriadoPor")
   vendasCriadas            Venda[]                @relation("VendaCriadaPor")
+  pedidosCriados           Pedido[]               @relation("PedidoCriadoPor")
 }
 
 model MembroLoja {
@@ -498,6 +499,7 @@ model Meta {
 model Pedido {
   id             Int          @id @default(autoincrement())
   lojaId         Int
+  criadoPorId    Int?
   clienteId      Int?
   cliente        Cliente?     @relation(fields: [clienteId], references: [id])
   dataCriacao    DateTime     @default(now())
@@ -513,6 +515,9 @@ model Pedido {
   status         String       @default("reservado")
   itens          ItemPedido[]
   loja           Loja         @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  criadoPor      Usuario?     @relation("PedidoCriadoPor", fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([lojaId, criadoPorId, dataCriacao])
 }
 
 model ItemPedido {

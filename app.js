@@ -48,7 +48,7 @@ app.use('/produtos', authRequired, lojaRequired, produtoRoutes);
 app.use('/vendas', authRequired, lojaRequired, vendaRoutes);
 app.use("/metas", authRequired, lojaRequired, acessoAmploRequired, metasRoutes);
 app.use('/clientes', authRequired, lojaRequired, clienteRoutes);
-app.use("/pedidos", authRequired, lojaRequired, acessoAmploRequired, pedidosRoutes);
+app.use("/pedidos", authRequired, lojaRequired, pedidosRoutes);
 app.use("/relatorios", authRequired, lojaRequired, acessoAmploRequired, relatorioRoutes);
 app.use("/estoque", authRequired, lojaRequired, acessoAmploRequired, estoqueRoutes);
 app.use("/inventarios", authRequired, lojaRequired, acessoAmploRequired, inventarioRoutes);

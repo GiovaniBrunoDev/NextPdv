@@ -1,6 +1,6 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
-const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
+const { assinaturaAtivaRequired, requireRole, acessoAmploRequired } = require("../middlewares/auth");
 const { registrarVendaNoCaixa } = require("../services/caixaService");
 const { registrarFinanceiroVenda } = require("../services/financeiroService");
 const { registrarMovimentoEstoque } = require("../services/estoqueMovimentoService");
@@ -15,6 +15,11 @@ const STATUS_FINAIS = ["cancelado", "entregue"];
 
 function lojaId(req) {
   return req.loja.id;
+}
+
+function escopoPedido(req) {
+  if (!req.membroLoja?.vendasPropriasApenas) return {};
+  return { criadoPorId: req.usuario.id };
 }
 
 function toNumberOrNull(value) {
@@ -64,6 +69,7 @@ function montarItensPedido(itens) {
 function includePedidoCompleto() {
   return {
     cliente: true,
+    criadoPor: { select: { id: true, nome: true } },
     itens: { include: { variacaoProduto: { include: { produto: true } } } },
   };
 }
@@ -181,6 +187,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
       const pedidoCriado = await tx.pedido.create({
         data: {
           lojaId: lojaId(req),
+          criadoPorId: req.usuario?.id || null,
           clienteId: clienteIdNumerico || null,
           observacoes,
           dataEntrega: novaDataEntrega,
@@ -259,7 +266,7 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente", "ven
 
     const pedido = await prisma.$transaction(async (tx) => {
       const pedidoAtual = await tx.pedido.findFirst({
-        where: { id: pedidoId, lojaId: lojaId(req) },
+        where: { id: pedidoId, lojaId: lojaId(req), ...escopoPedido(req) },
         include: { itens: true },
       });
 
@@ -413,7 +420,7 @@ router.put("/:id/status", assinaturaAtivaRequired, requireRole("admin", "gerente
 
     const pedido = await prisma.$transaction(async (tx) => {
       const pedidoAtual = await tx.pedido.findFirst({
-        where: { id: Number(req.params.id), lojaId: lojaId(req) },
+        where: { id: Number(req.params.id), lojaId: lojaId(req), ...escopoPedido(req) },
         include: { itens: true },
       });
       if (!pedidoAtual) throw new Error("Pedido nao encontrado.");
@@ -465,6 +472,7 @@ router.get("/", async (req, res) => {
     const pedidos = await prisma.pedido.findMany({
       where: {
         lojaId: lojaId(req),
+        ...escopoPedido(req),
         status: { notIn: STATUS_FINAIS },
       },
       orderBy: { dataCriacao: "desc" },
@@ -488,6 +496,7 @@ router.get("/hoje", async (req, res) => {
     const pedidosHoje = await prisma.pedido.findMany({
       where: {
         lojaId: lojaId(req),
+        ...escopoPedido(req),
         dataEntrega: { gte: inicio, lte: fim },
         status: { notIn: STATUS_FINAIS },
       },
@@ -502,7 +511,7 @@ router.get("/hoje", async (req, res) => {
   }
 });
 
-router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
+router.post("/:id/confirmar", assinaturaAtivaRequired, acessoAmploRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
   try {
     const formaPagamento = String(req.body.formaPagamento || "").trim();
     const pagamentos = Array.isArray(req.body.pagamentos) ? req.body.pagamentos : [];
@@ -543,7 +552,7 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
       const novaVenda = await tx.venda.create({
         data: {
           lojaId: lojaId(req),
-          criadoPorId: req.usuario?.id || null,
+          criadoPorId: pedido.criadoPorId || req.usuario?.id || null,
           clienteId: pedido.clienteId || null,
           tipoEntrega: pedido.tipoEntrega,
           taxaEntrega: taxaEntregaFinal,
