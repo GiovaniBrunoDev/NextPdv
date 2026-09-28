@@ -28,6 +28,7 @@ const mobileUploadRoutes = require("./routes/mobileUploadRoutes");
 const authRoutes = require("./routes/authRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const equipeRoutes = require("./routes/equipeRoutes");
+const notificacaoRoutes = require("./routes/notificacaoRoutes");
 const { authRequired, lojaRequired, acessoAmploRequired } = require("./middlewares/auth");
 
 // middlewares
@@ -57,6 +58,7 @@ app.use("/financeiro", authRequired, lojaRequired, acessoAmploRequired, financei
 app.use("/fornecedores", authRequired, lojaRequired, acessoAmploRequired, fornecedorRoutes);
 app.use("/entregadores", authRequired, lojaRequired, entregadorRoutes);
 app.use("/equipe", authRequired, lojaRequired, equipeRoutes);
+app.use("/notificacoes", authRequired, lojaRequired, notificacaoRoutes);
 
 // Catálogo
 const catalogoRouter = express.Router();

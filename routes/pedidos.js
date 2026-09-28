@@ -5,6 +5,7 @@ const { registrarVendaNoCaixa } = require("../services/caixaService");
 const { registrarFinanceiroVenda } = require("../services/financeiroService");
 const { registrarMovimentoEstoque } = require("../services/estoqueMovimentoService");
 const { mensagemPublica } = require("../services/errorResponse");
+const { notificarNovoPedido } = require("../services/notificacaoPushService");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -264,6 +265,13 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
 
       return pedidoCriado;
     }, transacaoOperacionalOpcoes);
+
+    notificarNovoPedido(prisma, {
+      lojaId: lojaId(req),
+      pedido,
+      criadoPorId: req.usuario?.id,
+      criadoPorNome: req.usuario?.nome,
+    }).catch((error) => console.error("Erro ao enviar notificação do pedido:", error.message));
 
     res.status(201).json({ message: "Pedido criado com sucesso!", pedido: pedidoVisivelParaMembro(req, pedido) });
   } catch (error) {

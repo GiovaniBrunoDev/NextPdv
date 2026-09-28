@@ -42,6 +42,7 @@ model Loja {
   membros                MembroLoja[]
   assinatura             Assinatura?
   convites               ConviteLoja[]
+  inscricoesPush         InscricaoPush[]
 }
 
 model Usuario {
@@ -64,6 +65,7 @@ model Usuario {
   lancamentosFinanceiros   LancamentoFinanceiro[] @relation("LancamentoFinanceiroCriadoPor")
   vendasCriadas            Venda[]                @relation("VendaCriadaPor")
   pedidosCriados           Pedido[]               @relation("PedidoCriadoPor")
+  inscricoesPush           InscricaoPush[]
 }
 
 model MembroLoja {
@@ -79,6 +81,23 @@ model MembroLoja {
   loja                 Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
 
   @@unique([usuarioId, lojaId])
+}
+
+model InscricaoPush {
+  id           Int      @id @default(autoincrement())
+  lojaId       Int
+  usuarioId    Int
+  endpoint     String   @unique
+  p256dh       String
+  auth         String
+  userAgent    String?
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  loja         Loja     @relation(fields: [lojaId], references: [id], onDelete: Cascade)
+  usuario      Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([lojaId, usuarioId, ativo])
 }
 
 model Plano {
