@@ -59,6 +59,36 @@ function escopoVenda(req, extra = {}) {
   };
 }
 
+function produtoSemDadosFinanceiros(produto) {
+  if (!produto) return produto;
+  const { custoUnitario, outrosCustos, fornecedorId, ...produtoOperacional } = produto;
+  return produtoOperacional;
+}
+
+function vendaVisivelParaMembro(req, venda) {
+  if (!venda || !req.membroLoja?.vendasPropriasApenas) return venda;
+
+  return {
+    ...venda,
+    itens: (venda.itens || []).map((item) => {
+      const { custoUnitario, outrosCustos, ...itemOperacional } = item;
+      if (!item.variacaoProduto) return itemOperacional;
+
+      return {
+        ...itemOperacional,
+        variacaoProduto: {
+          ...item.variacaoProduto,
+          produto: produtoSemDadosFinanceiros(item.variacaoProduto.produto),
+        },
+      };
+    }),
+    pagamentos: (venda.pagamentos || []).map((pagamento) => {
+      const { conta, lancamentos, ...pagamentoOperacional } = pagamento;
+      return pagamentoOperacional;
+    }),
+  };
+}
+
 function numeroValido(valor, fallback = 0) {
   const numero = Number(valor ?? fallback);
   return Number.isFinite(numero) ? numero : fallback;
@@ -226,7 +256,11 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
       return tx.venda.findUnique({ where: { id: novaVenda.id }, include: vendaInclude });
     }, transacaoOperacionalOpcoes);
 
-    return res.status(201).json({ mensagem: "Venda registrada com sucesso!", vendaId: venda.id, venda });
+    return res.status(201).json({
+      mensagem: "Venda registrada com sucesso!",
+      vendaId: venda.id,
+      venda: vendaVisivelParaMembro(req, venda),
+    });
   } catch (error) {
     console.error("Erro ao registrar venda:", error);
     return res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel registrar a venda. Tente novamente.") });
@@ -241,7 +275,7 @@ router.get("/", async (req, res) => {
       include: vendaInclude,
     });
 
-    res.json(vendas);
+    res.json(vendas.map((venda) => vendaVisivelParaMembro(req, venda)));
   } catch (error) {
     console.error("Erro ao listar vendas:", error);
     res.status(500).json({ erro: "Erro ao listar vendas." });
@@ -278,7 +312,7 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), asy
       include: vendaInclude,
     });
 
-    res.json(vendaAtualizada);
+    res.json(vendaVisivelParaMembro(req, vendaAtualizada));
   } catch (error) {
     console.error("Erro ao atualizar venda:", error);
     res.status(500).json({ error: "Erro ao atualizar venda." });
@@ -413,7 +447,7 @@ router.post("/troca", assinaturaAtivaRequired, requireRole("admin", "gerente", "
       return tx.venda.findUnique({ where: { id: venda.id }, include: vendaInclude });
     }, transacaoOperacionalOpcoes);
 
-    res.json({ mensagem: "Troca realizada com sucesso!", venda: vendaAtualizada });
+    res.json({ mensagem: "Troca realizada com sucesso!", venda: vendaVisivelParaMembro(req, vendaAtualizada) });
   } catch (error) {
     console.error("Erro ao realizar troca:", error);
     res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel concluir a troca. Tente novamente.") });

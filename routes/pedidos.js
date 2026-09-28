@@ -1,6 +1,6 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
-const { assinaturaAtivaRequired, requireRole, acessoAmploRequired } = require("../middlewares/auth");
+const { assinaturaAtivaRequired, requireRole } = require("../middlewares/auth");
 const { registrarVendaNoCaixa } = require("../services/caixaService");
 const { registrarFinanceiroVenda } = require("../services/financeiroService");
 const { registrarMovimentoEstoque } = require("../services/estoqueMovimentoService");
@@ -20,6 +20,46 @@ function lojaId(req) {
 function escopoPedido(req) {
   if (!req.membroLoja?.vendasPropriasApenas) return {};
   return { criadoPorId: req.usuario.id };
+}
+
+function produtoSemDadosFinanceiros(produto) {
+  if (!produto) return produto;
+  const { custoUnitario, outrosCustos, fornecedorId, ...produtoOperacional } = produto;
+  return produtoOperacional;
+}
+
+function itensVisiveisParaMembro(req, itens = []) {
+  if (!req.membroLoja?.vendasPropriasApenas) return itens;
+
+  return itens.map((item) => {
+    const { custoUnitario, outrosCustos, ...itemOperacional } = item;
+    if (!item.variacaoProduto) return itemOperacional;
+
+    return {
+      ...itemOperacional,
+      variacaoProduto: {
+        ...item.variacaoProduto,
+        produto: produtoSemDadosFinanceiros(item.variacaoProduto.produto),
+      },
+    };
+  });
+}
+
+function pedidoVisivelParaMembro(req, pedido) {
+  if (!pedido || !req.membroLoja?.vendasPropriasApenas) return pedido;
+  return { ...pedido, itens: itensVisiveisParaMembro(req, pedido.itens) };
+}
+
+function vendaVisivelParaMembro(req, venda) {
+  if (!venda || !req.membroLoja?.vendasPropriasApenas) return venda;
+  return {
+    ...venda,
+    itens: itensVisiveisParaMembro(req, venda.itens),
+    pagamentos: (venda.pagamentos || []).map((pagamento) => {
+      const { conta, lancamentos, ...pagamentoOperacional } = pagamento;
+      return pagamentoOperacional;
+    }),
+  };
 }
 
 function toNumberOrNull(value) {
@@ -225,7 +265,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
       return pedidoCriado;
     }, transacaoOperacionalOpcoes);
 
-    res.status(201).json({ message: "Pedido criado com sucesso!", pedido });
+    res.status(201).json({ message: "Pedido criado com sucesso!", pedido: pedidoVisivelParaMembro(req, pedido) });
   } catch (error) {
     console.error("Erro ao criar pedido:", error);
     res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel criar o pedido. Tente novamente.") });
@@ -404,7 +444,7 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente", "ven
       });
     }, transacaoOperacionalOpcoes);
 
-    res.json({ message: "Pedido atualizado com sucesso!", pedido });
+    res.json({ message: "Pedido atualizado com sucesso!", pedido: pedidoVisivelParaMembro(req, pedido) });
   } catch (error) {
     console.error("Erro ao editar pedido:", error);
     res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel atualizar o pedido. Tente novamente.") });
@@ -460,7 +500,7 @@ router.put("/:id/status", assinaturaAtivaRequired, requireRole("admin", "gerente
       });
     }, transacaoOperacionalOpcoes);
 
-    res.json({ message: `Status atualizado para ${status}.`, pedido });
+    res.json({ message: `Status atualizado para ${status}.`, pedido: pedidoVisivelParaMembro(req, pedido) });
   } catch (error) {
     console.error("Erro ao atualizar status:", error);
     res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel atualizar o status do pedido.") });
@@ -478,7 +518,7 @@ router.get("/", async (req, res) => {
       orderBy: { dataCriacao: "desc" },
       include: includePedidoCompleto(),
     });
-    res.json(pedidos);
+    res.json(pedidos.map((pedido) => pedidoVisivelParaMembro(req, pedido)));
   } catch (error) {
     console.error("Erro ao listar pedidos:", error);
     res.status(500).json({ error: "Erro ao listar pedidos." });
@@ -504,14 +544,14 @@ router.get("/hoje", async (req, res) => {
       orderBy: { horarioEntrega: "asc" },
     });
 
-    res.json(pedidosHoje);
+    res.json(pedidosHoje.map((pedido) => pedidoVisivelParaMembro(req, pedido)));
   } catch (error) {
     console.error("Erro ao buscar pedidos de hoje:", error);
     res.status(500).json({ error: "Erro ao buscar pedidos do dia." });
   }
 });
 
-router.post("/:id/confirmar", assinaturaAtivaRequired, acessoAmploRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
+router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "gerente", "vendedor"), async (req, res) => {
   try {
     const formaPagamento = String(req.body.formaPagamento || "").trim();
     const pagamentos = Array.isArray(req.body.pagamentos) ? req.body.pagamentos : [];
@@ -524,7 +564,7 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, acessoAmploRequired, requ
 
     const venda = await prisma.$transaction(async (tx) => {
       const pedido = await tx.pedido.findFirst({
-        where: { id: Number(req.params.id), lojaId: lojaId(req) },
+        where: { id: Number(req.params.id), lojaId: lojaId(req), ...escopoPedido(req) },
         include: {
           itens: {
             include: {
@@ -611,7 +651,7 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, acessoAmploRequired, requ
       return novaVenda;
     }, transacaoOperacionalOpcoes);
 
-    res.json({ message: "Pedido convertido em venda com sucesso!", venda });
+    res.json({ message: "Pedido convertido em venda com sucesso!", venda: vendaVisivelParaMembro(req, venda) });
   } catch (error) {
     console.error("Erro ao confirmar pedido:", error);
     res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel confirmar o pedido. Tente novamente.") });

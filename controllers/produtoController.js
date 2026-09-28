@@ -57,6 +57,21 @@ function imagemCompleta(req, produto) {
   };
 }
 
+function produtoVisivelParaMembro(req, produto) {
+  const produtoComImagem = imagemCompleta(req, produto);
+  if (!req.membroLoja?.vendasPropriasApenas) return produtoComImagem;
+
+  const {
+    custoUnitario,
+    outrosCustos,
+    fornecedorId,
+    fornecedor,
+    ...produtoOperacional
+  } = produtoComImagem;
+
+  return produtoOperacional;
+}
+
 async function baixarImagemProduto(req, res) {
   try {
     const produto = await prisma.produto.findFirst({
@@ -129,7 +144,7 @@ async function buscarProdutos(req, res) {
       include: produtoInclude(),
     });
 
-    res.json(produtos.map((produto) => imagemCompleta(req, produto)));
+    res.json(produtos.map((produto) => produtoVisivelParaMembro(req, produto)));
   } catch (error) {
     console.error("Erro ao buscar produtos:", error);
     res.status(500).json({ error: "Nao foi possivel buscar os produtos." });
@@ -143,7 +158,7 @@ async function buscarProduto(req, res) {
   });
 
   if (!produto) return res.status(404).json({ error: "Produto nao encontrado" });
-  res.json(imagemCompleta(req, produto));
+  res.json(produtoVisivelParaMembro(req, produto));
 }
 
 async function criarProduto(req, res) {
@@ -246,7 +261,7 @@ async function listarProdutos(req, res) {
       orderBy: { nome: "asc" },
     });
 
-    res.json(produtos.map((produto) => imagemCompleta(req, produto)));
+    res.json(produtos.map((produto) => produtoVisivelParaMembro(req, produto)));
   } catch (error) {
     console.error("Erro ao listar produtos:", error);
     res.status(500).json({ error: "Nao foi possivel listar os produtos." });
