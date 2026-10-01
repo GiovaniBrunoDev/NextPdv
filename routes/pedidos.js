@@ -73,6 +73,35 @@ function numero(value, fallback = 0) {
   return toNumberOrNull(value) ?? fallback;
 }
 
+function dataCalendario(value) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+  if (!match) throw new Error("Data de entrega inválida.");
+
+  const ano = Number(match[1]);
+  const mes = Number(match[2]);
+  const dia = Number(match[3]);
+  const data = new Date(Date.UTC(ano, mes - 1, dia));
+
+  if (data.getUTCFullYear() !== ano || data.getUTCMonth() !== mes - 1 || data.getUTCDate() !== dia) {
+    throw new Error("Data de entrega inválida.");
+  }
+
+  return data;
+}
+
+function dataAtualNoBrasil() {
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const valores = Object.fromEntries(partes.map((parte) => [parte.type, parte.value]));
+  return dataCalendario(`${valores.year}-${valores.month}-${valores.day}`);
+}
+
 function itemManual(item) {
   if (item.manual || item.tipo === "manual") return true;
   if (item.variacaoProdutoId === null || item.variacaoProdutoId === undefined || item.variacaoProdutoId === "") {
@@ -147,9 +176,9 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
       }
       return !Number.isInteger(item.variacaoProdutoId);
     });
-    if (itemInvalido) return res.status(400).json({ error: "Itens do pedido invalidos." });
+    if (itemInvalido) return res.status(400).json({ error: "Itens do pedido inválidos." });
 
-    const novaDataEntrega = dataEntrega ? new Date(dataEntrega) : null;
+    const novaDataEntrega = dataCalendario(dataEntrega);
     const clienteIdNumerico = toNumberOrNull(clienteId);
     const taxaEntregaPedido = tipoEntrega === "entrega" ? Math.max(numero(taxaEntrega), 0) : 0;
 
@@ -158,7 +187,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
         const cliente = await tx.cliente.findFirst({
           where: { id: clienteIdNumerico, lojaId: lojaId(req) },
         });
-        if (!cliente) throw new Error("Cliente nao encontrado nesta loja.");
+        if (!cliente) throw new Error("Cliente não encontrado nesta loja.");
       }
 
       const itensComPreco = [];
@@ -186,7 +215,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
           },
           include: { produto: true },
         });
-        if (!variacao) throw new Error(`Variacao ${item.variacaoProdutoId} nao encontrada.`);
+        if (!variacao) throw new Error(`Variação ${item.variacaoProdutoId} não encontrada.`);
 
         const reserva = await tx.variacaoProduto.updateMany({
           where: {
@@ -276,7 +305,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
     res.status(201).json({ message: "Pedido criado com sucesso!", pedido: pedidoVisivelParaMembro(req, pedido) });
   } catch (error) {
     console.error("Erro ao criar pedido:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel criar o pedido. Tente novamente.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível criar o pedido. Tente novamente.") });
   }
 });
 
@@ -304,10 +333,10 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente", "ven
       }
       return !Number.isInteger(item.variacaoProdutoId);
     });
-    if (itemInvalido) return res.status(400).json({ error: "Itens do pedido invalidos." });
+    if (itemInvalido) return res.status(400).json({ error: "Itens do pedido inválidos." });
 
     const pedidoId = Number(req.params.id);
-    const novaDataEntrega = dataEntrega ? new Date(dataEntrega) : null;
+    const novaDataEntrega = dataCalendario(dataEntrega);
     const clienteIdNumerico = toNumberOrNull(clienteId);
     const tipoEntregaFinal = tipoEntrega || "retirada";
     const taxaEntregaPedido = tipoEntregaFinal === "entrega" ? Math.max(numero(taxaEntrega), 0) : 0;
@@ -318,14 +347,14 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente", "ven
         include: { itens: true },
       });
 
-      if (!pedidoAtual) throw new Error("Pedido nao encontrado.");
-      if (STATUS_FINAIS.includes(pedidoAtual.status)) throw new Error("Pedido ja foi finalizado.");
+      if (!pedidoAtual) throw new Error("Pedido não encontrado.");
+      if (STATUS_FINAIS.includes(pedidoAtual.status)) throw new Error("Pedido já foi finalizado.");
 
       if (clienteIdNumerico) {
         const cliente = await tx.cliente.findFirst({
           where: { id: clienteIdNumerico, lojaId: lojaId(req) },
         });
-        if (!cliente) throw new Error("Cliente nao encontrado nesta loja.");
+        if (!cliente) throw new Error("Cliente não encontrado nesta loja.");
       }
 
       const reservaAtiva = STATUS_COM_ESTOQUE_RESERVADO.includes(pedidoAtual.status);
@@ -379,7 +408,7 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente", "ven
           },
           include: { produto: true },
         });
-        if (!variacao) throw new Error(`Variacao ${item.variacaoProdutoId} nao encontrada.`);
+        if (!variacao) throw new Error(`Variação ${item.variacaoProdutoId} não encontrada.`);
 
         if (reservaAtiva) {
           const reserva = await tx.variacaoProduto.updateMany({
@@ -455,7 +484,7 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente", "ven
     res.json({ message: "Pedido atualizado com sucesso!", pedido: pedidoVisivelParaMembro(req, pedido) });
   } catch (error) {
     console.error("Erro ao editar pedido:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel atualizar o pedido. Tente novamente.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível atualizar o pedido. Tente novamente.") });
   }
 });
 
@@ -463,7 +492,7 @@ router.put("/:id/status", assinaturaAtivaRequired, requireRole("admin", "gerente
   try {
     const { status } = req.body;
     if (!status || status === "confirmado") {
-      return res.status(400).json({ error: "Para confirmar um pedido, use a acao de confirmar venda." });
+      return res.status(400).json({ error: "Para confirmar um pedido, use a ação de confirmar venda." });
     }
 
     const pedido = await prisma.$transaction(async (tx) => {
@@ -471,8 +500,8 @@ router.put("/:id/status", assinaturaAtivaRequired, requireRole("admin", "gerente
         where: { id: Number(req.params.id), lojaId: lojaId(req), ...escopoPedido(req) },
         include: { itens: true },
       });
-      if (!pedidoAtual) throw new Error("Pedido nao encontrado.");
-      if (STATUS_FINAIS.includes(pedidoAtual.status)) throw new Error("Pedido ja foi finalizado.");
+      if (!pedidoAtual) throw new Error("Pedido não encontrado.");
+      if (STATUS_FINAIS.includes(pedidoAtual.status)) throw new Error("Pedido já foi finalizado.");
 
       if (status === "cancelado" && STATUS_COM_ESTOQUE_RESERVADO.includes(pedidoAtual.status)) {
         for (const item of pedidoAtual.itens) {
@@ -511,7 +540,7 @@ router.put("/:id/status", assinaturaAtivaRequired, requireRole("admin", "gerente
     res.json({ message: `Status atualizado para ${status}.`, pedido: pedidoVisivelParaMembro(req, pedido) });
   } catch (error) {
     console.error("Erro ao atualizar status:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel atualizar o status do pedido.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível atualizar o status do pedido.") });
   }
 });
 
@@ -535,11 +564,8 @@ router.get("/", async (req, res) => {
 
 router.get("/hoje", async (req, res) => {
   try {
-    const agora = new Date();
-    const inicio = new Date(agora);
-    inicio.setHours(0, 0, 0, 0);
-    const fim = new Date(agora);
-    fim.setHours(23, 59, 59, 999);
+    const inicio = dataAtualNoBrasil();
+    const fim = new Date(inicio.getTime() + 24 * 60 * 60 * 1000 - 1);
 
     const pedidosHoje = await prisma.pedido.findMany({
       where: {
@@ -583,9 +609,9 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
           },
         },
       });
-      if (!pedido) throw new Error("Pedido nao encontrado.");
+      if (!pedido) throw new Error("Pedido não encontrado.");
       if (!STATUS_COM_ESTOQUE_RESERVADO.includes(pedido.status)) {
-        throw new Error("Pedido nao esta com estoque reservado para confirmacao.");
+        throw new Error("Pedido não está com estoque reservado para confirmação.");
       }
 
       const subtotalProdutos = pedido.itens.reduce(
@@ -662,7 +688,7 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
     res.json({ message: "Pedido convertido em venda com sucesso!", venda: vendaVisivelParaMembro(req, venda) });
   } catch (error) {
     console.error("Erro ao confirmar pedido:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel confirmar o pedido. Tente novamente.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível confirmar o pedido. Tente novamente.") });
   }
 });
 

@@ -57,15 +57,15 @@ function custosDaEntrada(custoUnitario, outrosCustos) {
   const outros = numeroFormulario(outrosCustos);
 
   if (custoUnitario !== "" && custoUnitario !== undefined && custoUnitario !== null && custo === null) {
-    throw new Error("Informe um custo unitario valido.");
+    throw new Error("Informe um custo unitário válido.");
   }
 
   if (outrosCustos !== "" && outrosCustos !== undefined && outrosCustos !== null && outros === null) {
     throw new Error("Informe outros custos corretamente.");
   }
 
-  if (custo !== null && custo < 0) throw new Error("O custo unitario nao pode ser negativo.");
-  if (outros !== null && outros < 0) throw new Error("Outros custos nao podem ser negativos.");
+  if (custo !== null && custo < 0) throw new Error("O custo unitário não pode ser negativo.");
+  if (outros !== null && outros < 0) throw new Error("Outros custos não podem ser negativos.");
 
   return { custo, outros };
 }
@@ -102,7 +102,7 @@ router.get("/movimentos", async (req, res) => {
     res.json(movimentos);
   } catch (error) {
     console.error("Erro ao listar movimentos de estoque:", error);
-    res.status(500).json({ error: "Erro ao carregar o historico de estoque." });
+    res.status(500).json({ error: "Erro ao carregar o histórico de estoque." });
   }
 });
 
@@ -122,13 +122,13 @@ router.post("/codigos-barras/gerar", assinaturaAtivaRequired, requireRole("admin
     }
 
     res.json({
-      mensagem: semCodigo.length ? "Codigos de barras gerados com sucesso." : "Todos os itens ja possuem codigo de barras.",
+      mensagem: semCodigo.length ? "Códigos de barras gerados com sucesso." : "Todos os itens já possuem código de barras.",
       gerados: semCodigo.length,
       total: variacoes.length,
     });
   } catch (error) {
-    console.error("Erro ao gerar codigos de barras:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel gerar os codigos de barras.") });
+    console.error("Erro ao gerar códigos de barras:", error);
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível gerar os códigos de barras.") });
   }
 });
 
@@ -138,7 +138,7 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
   const quantidadeEntrada = Number(quantidade);
 
   if (!variacaoId || !Number.isInteger(quantidadeEntrada) || quantidadeEntrada <= 0) {
-    return res.status(400).json({ error: "Informe uma variacao e uma quantidade valida." });
+    return res.status(400).json({ error: "Informe uma variação e uma quantidade válida." });
   }
 
   try {
@@ -148,7 +148,7 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
         where: { id: variacaoId, produto: { lojaId: lojaAtualId } },
         include: { produto: true },
       });
-      if (!variacao) throw new Error("Variacao nao encontrada.");
+      if (!variacao) throw new Error("Variação não encontrada.");
 
       const { custo, outros } = custosDaEntrada(custoUnitario, outrosCustos);
 
@@ -202,7 +202,7 @@ router.post("/entradas", assinaturaAtivaRequired, requireRole("admin", "gerente"
     res.status(201).json(entrada);
   } catch (error) {
     console.error("Erro ao registrar entrada de estoque:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel registrar a entrada de estoque.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível registrar a entrada de estoque.") });
   }
 });
 
@@ -229,7 +229,7 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
   );
 
   if (!produtoIdNumerico || itensValidos.length === 0) {
-    return res.status(400).json({ error: "Informe o produto e ao menos uma numeracao com quantidade." });
+    return res.status(400).json({ error: "Informe o produto e ao menos uma numeração com quantidade." });
   }
 
   try {
@@ -239,7 +239,7 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
         where: { id: produtoIdNumerico, lojaId: lojaAtualId },
         include: { variacoes: true },
       });
-      if (!produto) throw new Error("Produto nao encontrado.");
+      if (!produto) throw new Error("Produto não encontrado.");
 
       const { custo, outros } = custosDaEntrada(custoUnitario, outrosCustos);
 
@@ -322,7 +322,7 @@ router.post("/entradas/grade", assinaturaAtivaRequired, requireRole("admin", "ge
     res.status(201).json({ mensagem: "Entrada por grade registrada com sucesso.", entradas });
   } catch (error) {
     console.error("Erro ao registrar entrada por grade:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel registrar a reposicao. Tente novamente.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível registrar a reposição. Tente novamente.") });
   }
 });
 

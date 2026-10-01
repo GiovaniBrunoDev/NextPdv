@@ -89,7 +89,7 @@ async function buscarOuCriarCaixaDoDia(tx, lojaId, usuarioId) {
       lojaId,
       abertoPorId: usuarioId || null,
       valorInicial: 0,
-      observacaoAbertura: "Caixa automatico do dia.",
+      observacaoAbertura: "Caixa automático do dia.",
     },
   });
 }

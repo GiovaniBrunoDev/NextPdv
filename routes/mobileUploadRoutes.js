@@ -198,7 +198,7 @@ function renderUploadPage(token) {
           <input id="file" type="file" accept="image/*" hidden />
         </label>
 
-        <img id="preview" class="preview" alt="Previa do produto" />
+        <img id="preview" class="preview" alt="Prévia do produto" />
         <input id="fileAlt" type="file" accept="image/*" />
 
         <button id="submit" type="button" disabled>Enviar imagem para a Lojia</button>
@@ -239,7 +239,7 @@ function renderUploadPage(token) {
 
       submit.addEventListener("click", async () => {
         if (!token) {
-          setStatus("Link invalido. Gere um novo QR Code no computador.", "error");
+          setStatus("Link inválido. Gere um novo QR Code no computador.", "error");
           return;
         }
 
@@ -262,7 +262,7 @@ function renderUploadPage(token) {
           const data = await response.json().catch(() => ({}));
 
           if (!response.ok) {
-            throw new Error(data.error || "Nao foi possivel enviar a imagem.");
+            throw new Error(data.error || "Não foi possível enviar a imagem.");
           }
 
           setStatus("Imagem enviada. Agora volte ao computador para revisar e salvar o produto.", "ok");
@@ -282,7 +282,7 @@ function renderUploadPage(token) {
 function validarSessaoUpload(req, res, next) {
   limparSessoesExpiradas();
   const sessao = sessoes.get(req.params.token);
-  if (!sessao) return res.status(404).json({ error: "Sessao de upload expirada." });
+  if (!sessao) return res.status(404).json({ error: "Sessão de upload expirada." });
   req.sessaoUpload = sessao;
   next();
 }
@@ -347,7 +347,7 @@ router.get(
     limparSessoesExpiradas();
     const sessao = sessoes.get(req.params.token);
     if (!sessao || sessao.lojaId !== req.loja.id) {
-      return res.status(404).json({ error: "Sessao de upload nao encontrada." });
+      return res.status(404).json({ error: "Sessão de upload não encontrada." });
     }
 
     res.json({ token: sessao.token, imageUrl: sessao.imageUrl, expiraEm: new Date(sessao.expiraEm) });

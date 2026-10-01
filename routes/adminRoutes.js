@@ -152,18 +152,18 @@ router.put("/usuarios/:id", async (req, res) => {
   const { nome, email, telefone, ativo, superadmin } = req.body;
 
   if (id === req.usuario.id && ativo === false) {
-    return res.status(400).json({ error: "Voce nao pode desativar seu proprio usuario." });
+    return res.status(400).json({ error: "Você não pode desativar seu próprio usuário." });
   }
 
   const data = {};
   if (nome !== undefined) {
     const nomeLimpo = textoLimpo(nome);
-    if (!nomeLimpo) return res.status(400).json({ error: "Nome do usuario obrigatorio." });
+    if (!nomeLimpo) return res.status(400).json({ error: "Nome do usuário obrigatório." });
     data.nome = nomeLimpo;
   }
   if (email !== undefined) {
     const emailNormalizado = emailLimpo(email);
-    if (!emailNormalizado) return res.status(400).json({ error: "Email do usuario obrigatorio." });
+    if (!emailNormalizado) return res.status(400).json({ error: "E-mail do usuário obrigatório." });
     data.email = emailNormalizado;
   }
   if (telefone !== undefined) data.telefone = textoLimpo(telefone) || null;
@@ -192,15 +192,15 @@ router.put("/usuarios/:id", async (req, res) => {
 
     res.json(await usuarioAdminPayload(atualizado));
   } catch (error) {
-    if (error.code === "P2002") return res.status(409).json({ error: "Email ja esta em uso." });
-    res.status(400).json({ error: "Erro ao atualizar usuario.", detalhes: error.message });
+    if (error.code === "P2002") return res.status(409).json({ error: "E-mail já está em uso." });
+    res.status(400).json({ error: "Erro ao atualizar usuário.", detalhes: error.message });
   }
 });
 
 router.delete("/usuarios/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (id === req.usuario.id) {
-    return res.status(400).json({ error: "Voce nao pode excluir seu proprio usuario logado." });
+    return res.status(400).json({ error: "Você não pode excluir seu próprio usuário logado." });
   }
 
   const usuario = await prisma.usuario.findUnique({
@@ -218,7 +218,7 @@ router.delete("/usuarios/:id", async (req, res) => {
     },
   });
 
-  if (!usuario) return res.status(404).json({ error: "Usuario nao encontrado." });
+  if (!usuario) return res.status(404).json({ error: "Usuário não encontrado." });
 
   if (usuario.superadmin) {
     const outrosSuperadmins = await prisma.usuario.count({
@@ -237,12 +237,12 @@ router.delete("/usuarios/:id", async (req, res) => {
     ]);
     return res.json({
       acao: "desativado",
-      mensagem: "Usuario possui historico operacional e foi desativado com seguranca.",
+      mensagem: "Usuário possui histórico operacional e foi desativado com segurança.",
     });
   }
 
   await prisma.usuario.delete({ where: { id } });
-  res.json({ acao: "excluido", mensagem: "Usuario excluido definitivamente." });
+  res.json({ acao: "excluido", mensagem: "Usuário excluído definitivamente." });
 });
 
 router.put("/membros/:id", async (req, res) => {
@@ -252,7 +252,7 @@ router.put("/membros/:id", async (req, res) => {
 
   if (papel !== undefined) {
     if (!PERFIS_VALIDOS.includes(papel)) {
-      return res.status(400).json({ error: "Perfil invalido." });
+      return res.status(400).json({ error: "Perfil inválido." });
     }
     data.papel = papel;
   }
@@ -278,7 +278,7 @@ router.get("/planos", async (req, res) => {
 
 router.post("/planos", async (req, res) => {
   const { nome, valorMensal, descricao, ativo = true } = req.body;
-  if (!nome) return res.status(400).json({ error: "Nome do plano obrigatorio." });
+  if (!nome) return res.status(400).json({ error: "Nome do plano obrigatório." });
 
   const plano = await prisma.plano.create({
     data: {
@@ -307,7 +307,7 @@ router.put("/planos/:id", async (req, res) => {
 
 router.post("/convites", async (req, res) => {
   const { email, nomeLoja, planoId, papel = "admin", diasExpiracao = 7 } = req.body;
-  if (!nomeLoja) return res.status(400).json({ error: "Nome da loja obrigatorio." });
+  if (!nomeLoja) return res.status(400).json({ error: "Nome da loja obrigatório." });
 
   const token = crypto.randomBytes(24).toString("hex");
   const expiraEm = new Date();

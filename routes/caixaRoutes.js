@@ -60,7 +60,7 @@ router.post("/abrir", assinaturaAtivaRequired, requireRole("admin", "gerente", "
   const observacaoAbertura = String(req.body.observacao || "").trim() || null;
 
   if (valorInicial < 0) {
-    return res.status(400).json({ error: "Valor inicial invalido." });
+    return res.status(400).json({ error: "Valor inicial inválido." });
   }
 
   try {
@@ -69,7 +69,7 @@ router.post("/abrir", assinaturaAtivaRequired, requireRole("admin", "gerente", "
         where: { lojaId: lojaId(req), status: "aberto" },
         select: { id: true },
       });
-      if (aberto) throw new Error("Ja existe um caixa aberto para esta loja.");
+      if (aberto) throw new Error("Já existe um caixa aberto para esta loja.");
 
       await tx.caixa.create({
         data: {
@@ -97,7 +97,7 @@ router.post("/movimentos", assinaturaAtivaRequired, requireRole("admin", "gerent
   const formaPagamento = String(req.body.formaPagamento || "").trim() || null;
 
   if (!["entrada", "saida"].includes(tipo)) {
-    return res.status(400).json({ error: "Tipo de movimento invalido." });
+    return res.status(400).json({ error: "Tipo de movimento inválido." });
   }
 
   if (valor <= 0) {
@@ -105,7 +105,7 @@ router.post("/movimentos", assinaturaAtivaRequired, requireRole("admin", "gerent
   }
 
   if (!descricao) {
-    return res.status(400).json({ error: "Informe uma descricao para o movimento." });
+    return res.status(400).json({ error: "Informe uma descrição para o movimento." });
   }
 
   try {
@@ -143,7 +143,7 @@ router.post("/fechar", assinaturaAtivaRequired, requireRole("admin", "gerente", 
   const observacaoFechamento = String(req.body.observacao || "").trim() || null;
 
   if (valorFinalInformado < 0) {
-    return res.status(400).json({ error: "Valor contado invalido." });
+    return res.status(400).json({ error: "Valor contado inválido." });
   }
 
   try {

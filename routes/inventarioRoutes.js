@@ -64,17 +64,17 @@ router.get("/", requireRole("admin", "gerente"), async (req, res) => {
     res.json(inventarios.map((inventario) => resumoInventario(inventario, false)));
   } catch (error) {
     console.error("Erro ao listar inventarios:", error);
-    res.status(500).json({ error: "Nao foi possivel carregar os inventarios." });
+    res.status(500).json({ error: "Não foi possível carregar os inventários." });
   }
 });
 
 router.get("/:id", requireRole("admin", "gerente"), async (req, res) => {
   try {
     const inventario = await buscarInventario(req.params.id, lojaId(req));
-    if (!inventario) return res.status(404).json({ error: "Inventario nao encontrado." });
+    if (!inventario) return res.status(404).json({ error: "Inventário não encontrado." });
     res.json(inventario);
   } catch (error) {
-    res.status(500).json({ error: "Nao foi possivel carregar o inventario." });
+    res.status(500).json({ error: "Não foi possível carregar o inventário." });
   }
 });
 
@@ -88,12 +88,12 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente"), async
 
     if (existente) {
       return res.status(409).json({
-        error: "Ja existe um inventario em andamento.",
+        error: "Já existe um inventário em andamento.",
         inventarioId: existente.id,
       });
     }
 
-    const nome = String(req.body.nome || "").trim() || `Inventario ${new Date().toLocaleDateString("pt-BR")}`;
+    const nome = String(req.body.nome || "").trim() || `Inventário ${new Date().toLocaleDateString("pt-BR")}`;
 
     const inventarioId = await prisma.$transaction(async (tx) => {
       const variacoes = await tx.variacaoProduto.findMany({
@@ -102,7 +102,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente"), async
         orderBy: { id: "asc" },
       });
 
-      if (!variacoes.length) throw new Error("Cadastre produtos antes de iniciar o inventario.");
+      if (!variacoes.length) throw new Error("Cadastre produtos antes de iniciar o inventário.");
 
       const variacoesComCodigo = await garantirCodigosVariacoes(tx, lojaAtualId, variacoes);
       const produtoPorVariacao = new Map(variacoes.map((variacao) => [variacao.id, variacao.produto.nome]));
@@ -132,7 +132,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente"), async
     res.status(201).json(await buscarInventario(inventarioId, lojaAtualId));
   } catch (error) {
     console.error("Erro ao iniciar inventario:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel iniciar o inventario.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível iniciar o inventário.") });
   }
 });
 
@@ -146,7 +146,7 @@ router.patch("/:id/contagem", assinaturaAtivaRequired, requireRole("admin", "ger
     return res.status(400).json({ error: "Informe uma quantidade valida." });
   }
   if (!codigoBarras && !variacaoProdutoId) {
-    return res.status(400).json({ error: "Informe o codigo de barras ou a variacao." });
+    return res.status(400).json({ error: "Informe o código de barras ou a variação." });
   }
 
   try {
@@ -154,7 +154,7 @@ router.patch("/:id/contagem", assinaturaAtivaRequired, requireRole("admin", "ger
       where: { id: Number(req.params.id), lojaId: lojaId(req), status: "em_andamento" },
       select: { id: true },
     });
-    if (!inventario) return res.status(404).json({ error: "Inventario em andamento nao encontrado." });
+    if (!inventario) return res.status(404).json({ error: "Inventário em andamento não encontrado." });
 
     const item = await prisma.inventarioItem.findFirst({
       where: {
@@ -162,7 +162,7 @@ router.patch("/:id/contagem", assinaturaAtivaRequired, requireRole("admin", "ger
         ...(codigoBarras ? { codigoBarras } : { variacaoProdutoId }),
       },
     });
-    if (!item) return res.status(404).json({ error: "Item nao pertence a este inventario." });
+    if (!item) return res.status(404).json({ error: "Item não pertence a este inventário." });
 
     const quantidadeContada = incrementar ? Number(item.quantidadeContada || 0) + quantidade : quantidade;
     const atualizado = await prisma.inventarioItem.update({
@@ -175,7 +175,7 @@ router.patch("/:id/contagem", assinaturaAtivaRequired, requireRole("admin", "ger
 
     res.json(atualizado);
   } catch (error) {
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel registrar a contagem.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível registrar a contagem.") });
   }
 });
 
@@ -198,7 +198,7 @@ router.post("/:id/finalizar", assinaturaAtivaRequired, requireRole("admin", "ger
         },
       });
 
-      if (!inventario) throw new Error("Inventario em andamento nao encontrado.");
+      if (!inventario) throw new Error("Inventário em andamento não encontrado.");
 
       const itensParaAjustar = inventario.itens.filter(
         (item) => item.variacaoProduto && (item.quantidadeContada !== null || zerarNaoContados)
@@ -208,7 +208,7 @@ router.post("/:id/finalizar", assinaturaAtivaRequired, requireRole("admin", "ger
       const movimentos = [];
       for (const item of itensParaAjustar) {
         if (item.variacaoProduto.produto.lojaId !== lojaAtualId) {
-          throw new Error("Foi encontrado um item de outra loja no inventario.");
+          throw new Error("Foi encontrado um item de outra loja no inventário.");
         }
 
         const quantidadeFinal = item.quantidadeContada === null ? 0 : item.quantidadeContada;
@@ -251,7 +251,7 @@ router.post("/:id/finalizar", assinaturaAtivaRequired, requireRole("admin", "ger
     res.json(await buscarInventario(req.params.id, lojaAtualId));
   } catch (error) {
     console.error("Erro ao finalizar inventario:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel finalizar o inventario.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível finalizar o inventário.") });
   }
 });
 
@@ -261,10 +261,10 @@ router.post("/:id/cancelar", assinaturaAtivaRequired, requireRole("admin", "gere
       where: { id: Number(req.params.id), lojaId: lojaId(req), status: "em_andamento" },
       data: { status: "cancelado", finalizadoEm: new Date() },
     });
-    if (!inventario.count) return res.status(404).json({ error: "Inventario em andamento nao encontrado." });
+    if (!inventario.count) return res.status(404).json({ error: "Inventário em andamento não encontrado." });
     res.json(await buscarInventario(req.params.id, lojaId(req)));
   } catch (error) {
-    res.status(400).json({ error: "Nao foi possivel cancelar o inventario." });
+    res.status(400).json({ error: "Não foi possível cancelar o inventário." });
   }
 });
 

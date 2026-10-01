@@ -7,7 +7,7 @@ const FORMAS = {
 };
 
 const CONTAS_PADRAO = [
-  { nome: "Caixa fisico", tipo: "caixa" },
+  { nome: "Caixa físico", tipo: "caixa" },
   { nome: "Pix", tipo: "pix" },
   { nome: "Banco", tipo: "banco" },
   { nome: "Maquininha", tipo: "maquininha" },
@@ -65,8 +65,8 @@ function labelForma(forma) {
   const labels = {
     dinheiro: "Dinheiro",
     pix: "Pix",
-    debito: "Debito",
-    credito: "Credito",
+    debito: "Débito",
+    credito: "Crédito",
     a_prazo: "A prazo",
   };
   return labels[normalizada] || normalizada;

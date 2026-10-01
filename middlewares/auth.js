@@ -31,7 +31,7 @@ async function authRequired(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
 
-  if (!token) return res.status(401).json({ error: "Login obrigatorio." });
+  if (!token) return res.status(401).json({ error: "Login obrigatório." });
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
@@ -59,13 +59,13 @@ async function authRequired(req, res, next) {
     });
 
     if (!usuario || !usuario.ativo) {
-      return res.status(401).json({ error: "Usuario invalido ou inativo." });
+      return res.status(401).json({ error: "Usuário inválido ou inativo." });
     }
 
     req.usuario = usuario;
     next();
   } catch (error) {
-    return res.status(401).json({ error: "Sessao expirada. Faça login novamente." });
+    return res.status(401).json({ error: "Sessão expirada. Faça login novamente." });
   }
 }
 
@@ -77,7 +77,7 @@ function lojaRequired(req, res, next) {
     : membros[0];
 
   if (!membro) {
-    return res.status(403).json({ error: "Usuario sem acesso a esta loja." });
+    return res.status(403).json({ error: "Usuário sem acesso a esta loja." });
   }
 
   if (!membro.loja?.ativa) {
@@ -106,7 +106,7 @@ function requireRole(...perfisPermitidos) {
     const papel = req.membroLoja?.papel;
     if (perfisPermitidos.includes(papel)) return next();
 
-    return res.status(403).json({ error: "Permissao insuficiente." });
+    return res.status(403).json({ error: "Permissão insuficiente." });
   };
 }
 

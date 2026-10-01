@@ -75,7 +75,7 @@ async function clienteDaLoja(clienteId, loja) {
     where: { id: Number(clienteId), lojaId: loja },
     select: { id: true },
   });
-  if (!cliente) throw new Error("Cliente nao encontrado nesta loja.");
+  if (!cliente) throw new Error("Cliente não encontrado nesta loja.");
   return cliente.id;
 }
 
@@ -85,7 +85,7 @@ async function contaDaLoja(client, contaId, loja) {
     where: { id: Number(contaId), lojaId: loja, ativo: true },
     select: { id: true },
   });
-  if (!conta) throw new Error("Conta financeira nao encontrada nesta loja.");
+  if (!conta) throw new Error("Conta financeira não encontrada nesta loja.");
   return conta.id;
 }
 
@@ -305,8 +305,8 @@ router.put("/configuracao", assinaturaAtivaRequired, acessoFinanceiro, async (re
 
     res.json(configuracao);
   } catch (error) {
-    console.error("Erro ao salvar configuracao financeira:", error);
-    res.status(400).json({ error: error.message || "Erro ao salvar configuracao financeira." });
+    console.error("Erro ao salvar configuração financeira:", error);
+    res.status(400).json({ error: error.message || "Erro ao salvar configuração financeira." });
   }
 });
 
@@ -338,7 +338,7 @@ router.patch("/contas/:id", assinaturaAtivaRequired, acessoFinanceiro, async (re
     const conta = await prisma.contaFinanceira.findFirst({
       where: { id: Number(req.params.id), lojaId: lojaId(req) },
     });
-    if (!conta) return res.status(404).json({ error: "Conta nao encontrada." });
+    if (!conta) return res.status(404).json({ error: "Conta não encontrada." });
 
     const atualizada = await prisma.contaFinanceira.update({
       where: { id: conta.id },
@@ -365,10 +365,10 @@ router.post("/lancamentos", assinaturaAtivaRequired, acessoFinanceiro, async (re
   const categoria = String(req.body.categoria || "").trim() || (tipo === "saida" ? "despesa" : "entrada");
   const formaPagamento = String(req.body.formaPagamento || "").trim() || null;
 
-  if (!["entrada", "saida"].includes(tipo)) return res.status(400).json({ error: "Tipo de lancamento invalido." });
-  if (!["pago", "pendente"].includes(status)) return res.status(400).json({ error: "Status invalido." });
+  if (!["entrada", "saida"].includes(tipo)) return res.status(400).json({ error: "Tipo de lançamento inválido." });
+  if (!["pago", "pendente"].includes(status)) return res.status(400).json({ error: "Status inválido." });
   if (valor <= 0) return res.status(400).json({ error: "Informe um valor maior que zero." });
-  if (!descricao) return res.status(400).json({ error: "Informe uma descricao." });
+  if (!descricao) return res.status(400).json({ error: "Informe uma descrição." });
 
   try {
     await garantirEstruturaFinanceira(prisma, lojaId(req));
@@ -377,8 +377,8 @@ router.post("/lancamentos", assinaturaAtivaRequired, acessoFinanceiro, async (re
     const data = req.body.data ? dataLocal(req.body.data) : new Date();
     const vencimento = req.body.vencimento ? dataLocal(req.body.vencimento) : null;
 
-    if (Number.isNaN(data.getTime())) return res.status(400).json({ error: "Data invalida." });
-    if (vencimento && Number.isNaN(vencimento.getTime())) return res.status(400).json({ error: "Vencimento invalido." });
+    if (Number.isNaN(data.getTime())) return res.status(400).json({ error: "Data inválida." });
+    if (vencimento && Number.isNaN(vencimento.getTime())) return res.status(400).json({ error: "Vencimento inválido." });
 
     const lancamento = await prisma.lancamentoFinanceiro.create({
       data: {
@@ -406,8 +406,8 @@ router.post("/lancamentos", assinaturaAtivaRequired, acessoFinanceiro, async (re
 
     res.status(201).json(lancamento);
   } catch (error) {
-    console.error("Erro ao criar lancamento financeiro:", error);
-    res.status(400).json({ error: error.message || "Erro ao criar lancamento." });
+    console.error("Erro ao criar lançamento financeiro:", error);
+    res.status(400).json({ error: error.message || "Erro ao criar lançamento." });
   }
 });
 
@@ -416,7 +416,7 @@ router.patch("/lancamentos/:id/pagar", assinaturaAtivaRequired, acessoFinanceiro
     const lancamento = await prisma.lancamentoFinanceiro.findFirst({
       where: { id: Number(req.params.id), lojaId: lojaId(req), status: { not: "cancelado" } },
     });
-    if (!lancamento) return res.status(404).json({ error: "Lancamento nao encontrado." });
+    if (!lancamento) return res.status(404).json({ error: "Lançamento não encontrado." });
 
     const contaId = req.body.contaId ? await contaDaLoja(prisma, req.body.contaId, lojaId(req)) : lancamento.contaId;
     const atualizado = await prisma.lancamentoFinanceiro.update({
@@ -432,7 +432,7 @@ router.patch("/lancamentos/:id/pagar", assinaturaAtivaRequired, acessoFinanceiro
 
     res.json(atualizado);
   } catch (error) {
-    console.error("Erro ao marcar lancamento como pago:", error);
+    console.error("Erro ao marcar lançamento como pago:", error);
     res.status(400).json({ error: "Erro ao marcar como pago." });
   }
 });
@@ -442,26 +442,26 @@ router.delete("/lancamentos/:id", assinaturaAtivaRequired, acessoFinanceiro, asy
     const lancamento = await prisma.lancamentoFinanceiro.findFirst({
       where: { id: Number(req.params.id), lojaId: lojaId(req), origem: { in: ["manual", "recorrente"] } },
     });
-    if (!lancamento) return res.status(404).json({ error: "Lancamento nao encontrado." });
+    if (!lancamento) return res.status(404).json({ error: "Lançamento não encontrado." });
 
     await prisma.lancamentoFinanceiro.update({
       where: { id: lancamento.id },
       data: { status: "cancelado" },
     });
 
-    res.json({ mensagem: "Lancamento removido." });
+    res.json({ mensagem: "Lançamento removido." });
   } catch (error) {
-    console.error("Erro ao remover lancamento:", error);
-    res.status(400).json({ error: "Erro ao remover lancamento." });
+    console.error("Erro ao remover lançamento:", error);
+    res.status(400).json({ error: "Erro ao remover lançamento." });
   }
 });
 
 router.post("/transferencias", assinaturaAtivaRequired, acessoFinanceiro, async (req, res) => {
   const valor = dinheiro(req.body.valor);
-  const descricao = String(req.body.descricao || "Transferencia entre contas").trim();
+  const descricao = String(req.body.descricao || "Transferência entre contas").trim();
 
   if (valor <= 0) return res.status(400).json({ error: "Informe um valor maior que zero." });
-  if (!req.body.contaOrigemId || !req.body.contaDestinoId) return res.status(400).json({ error: "Informe as contas da transferencia." });
+  if (!req.body.contaOrigemId || !req.body.contaDestinoId) return res.status(400).json({ error: "Informe as contas da transferência." });
   if (Number(req.body.contaOrigemId) === Number(req.body.contaDestinoId)) return res.status(400).json({ error: "As contas precisam ser diferentes." });
 
   try {
@@ -522,7 +522,7 @@ router.post("/recorrentes", assinaturaAtivaRequired, acessoFinanceiro, async (re
   const valor = dinheiro(req.body.valor);
   const diaVencimento = Math.min(Math.max(Math.floor(numero(req.body.diaVencimento, 1)), 1), 31);
 
-  if (!descricao) return res.status(400).json({ error: "Informe a descricao da recorrencia." });
+  if (!descricao) return res.status(400).json({ error: "Informe a descrição da recorrência." });
   if (valor <= 0) return res.status(400).json({ error: "Informe um valor maior que zero." });
 
   try {
@@ -543,8 +543,8 @@ router.post("/recorrentes", assinaturaAtivaRequired, acessoFinanceiro, async (re
 
     res.status(201).json(recorrencia);
   } catch (error) {
-    console.error("Erro ao criar recorrencia:", error);
-    res.status(400).json({ error: error.message || "Erro ao criar recorrencia." });
+    console.error("Erro ao criar recorrência:", error);
+    res.status(400).json({ error: error.message || "Erro ao criar recorrência." });
   }
 });
 
@@ -553,7 +553,7 @@ router.patch("/recorrentes/:id", assinaturaAtivaRequired, acessoFinanceiro, asyn
     const recorrencia = await prisma.despesaRecorrente.findFirst({
       where: { id: Number(req.params.id), lojaId: lojaId(req) },
     });
-    if (!recorrencia) return res.status(404).json({ error: "Recorrencia nao encontrada." });
+    if (!recorrencia) return res.status(404).json({ error: "Recorrência não encontrada." });
 
     const atualizada = await prisma.despesaRecorrente.update({
       where: { id: recorrencia.id },
@@ -564,8 +564,8 @@ router.patch("/recorrentes/:id", assinaturaAtivaRequired, acessoFinanceiro, asyn
 
     res.json(atualizada);
   } catch (error) {
-    console.error("Erro ao atualizar recorrencia:", error);
-    res.status(400).json({ error: "Erro ao atualizar recorrencia." });
+    console.error("Erro ao atualizar recorrência:", error);
+    res.status(400).json({ error: "Erro ao atualizar recorrência." });
   }
 });
 

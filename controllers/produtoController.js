@@ -36,13 +36,13 @@ async function validarFornecedorDaLoja(fornecedorId, loja) {
   if (fornecedorId === null || fornecedorId === undefined || fornecedorId === "") return null;
 
   const id = Number(fornecedorId);
-  if (!id) throw new Error("Fornecedor invalido.");
+  if (!id) throw new Error("Fornecedor inválido.");
 
   const fornecedor = await prisma.fornecedor.findFirst({
     where: { id, lojaId: loja, ativo: true },
   });
 
-  if (!fornecedor) throw new Error("Fornecedor nao encontrado nesta loja.");
+  if (!fornecedor) throw new Error("Fornecedor não encontrado nesta loja.");
   return fornecedor.id;
 }
 
@@ -79,12 +79,12 @@ async function baixarImagemProduto(req, res) {
       select: { id: true, imagemUrl: true },
     });
 
-    if (!produto) return res.status(404).json({ error: "Produto nao encontrado." });
+    if (!produto) return res.status(404).json({ error: "Produto não encontrado." });
     if (!produto.imagemUrl) return res.status(404).json({ error: "Produto sem imagem." });
 
     if (urlAbsoluta(produto.imagemUrl)) {
       const resposta = await fetch(produto.imagemUrl);
-      if (!resposta.ok) return res.status(502).json({ error: "Nao foi possivel baixar a imagem." });
+      if (!resposta.ok) return res.status(502).json({ error: "Não foi possível baixar a imagem." });
 
       const contentType = resposta.headers.get("content-type") || "image/jpeg";
       const buffer = Buffer.from(await resposta.arrayBuffer());
@@ -100,14 +100,14 @@ async function baixarImagemProduto(req, res) {
     const relativoUploads = path.relative(uploadsRoot, caminhoImagem);
 
     if (relativoUploads.startsWith("..") || path.isAbsolute(relativoUploads) || !fs.existsSync(caminhoImagem)) {
-      return res.status(404).json({ error: "Imagem nao encontrada." });
+      return res.status(404).json({ error: "Imagem não encontrada." });
     }
 
     res.setHeader("Cache-Control", "private, max-age=300");
     return res.sendFile(caminhoImagem);
   } catch (error) {
     console.error("Erro ao baixar imagem do produto:", error);
-    return res.status(500).json({ error: "Nao foi possivel baixar a imagem." });
+    return res.status(500).json({ error: "Não foi possível baixar a imagem." });
   }
 }
 
@@ -147,7 +147,7 @@ async function buscarProdutos(req, res) {
     res.json(produtos.map((produto) => produtoVisivelParaMembro(req, produto)));
   } catch (error) {
     console.error("Erro ao buscar produtos:", error);
-    res.status(500).json({ error: "Nao foi possivel buscar os produtos." });
+    res.status(500).json({ error: "Não foi possível buscar os produtos." });
   }
 }
 
@@ -157,7 +157,7 @@ async function buscarProduto(req, res) {
     include: produtoInclude(),
   });
 
-  if (!produto) return res.status(404).json({ error: "Produto nao encontrado" });
+  if (!produto) return res.status(404).json({ error: "Produto não encontrado" });
   res.json(produtoVisivelParaMembro(req, produto));
 }
 
@@ -186,10 +186,10 @@ async function criarProduto(req, res) {
 
     if (!nomeLimpo) return res.status(400).json({ error: "Informe o nome do produto." });
     if (precoNumero === null || precoNumero <= 0) {
-      return res.status(400).json({ error: "Informe o preco de venda do produto." });
+      return res.status(400).json({ error: "Informe o preço de venda do produto." });
     }
     if (custoNumero === null || custoNumero < 0) {
-      return res.status(400).json({ error: "Informe o custo unitario do produto." });
+      return res.status(400).json({ error: "Informe o custo unitário do produto." });
     }
     if (outrosCustosNumero < 0) {
       return res.status(400).json({ error: "Informe outros custos corretamente." });
@@ -249,7 +249,7 @@ async function criarProduto(req, res) {
     res.status(201).json(novo);
   } catch (error) {
     console.error("Erro ao criar produto:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel criar o produto. Tente novamente.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível criar o produto. Tente novamente.") });
   }
 }
 
@@ -264,7 +264,7 @@ async function listarProdutos(req, res) {
     res.json(produtos.map((produto) => produtoVisivelParaMembro(req, produto)));
   } catch (error) {
     console.error("Erro ao listar produtos:", error);
-    res.status(500).json({ error: "Nao foi possivel listar os produtos." });
+    res.status(500).json({ error: "Não foi possível listar os produtos." });
   }
 }
 
@@ -285,7 +285,7 @@ async function atualizarProduto(req, res) {
 
   try {
     const produto = await prisma.produto.findFirst({ where: { id, lojaId: lojaId(req) } });
-    if (!produto) return res.status(404).json({ error: "Produto nao encontrado." });
+    if (!produto) return res.status(404).json({ error: "Produto não encontrado." });
 
     const data = {};
     if (nome !== undefined) {
@@ -298,12 +298,12 @@ async function atualizarProduto(req, res) {
     if (fornecedorId !== undefined) data.fornecedorId = await validarFornecedorDaLoja(fornecedorId, lojaId(req));
     if (preco !== undefined) {
       const precoNumero = numeroFormulario(preco);
-      if (precoNumero === null || precoNumero <= 0) return res.status(400).json({ error: "Informe o preco de venda do produto." });
+      if (precoNumero === null || precoNumero <= 0) return res.status(400).json({ error: "Informe o preço de venda do produto." });
       data.preco = precoNumero;
     }
     if (custoUnitario !== undefined) {
       const custoNumero = numeroFormulario(custoUnitario);
-      if (custoNumero === null || custoNumero < 0) return res.status(400).json({ error: "Informe o custo unitario do produto." });
+      if (custoNumero === null || custoNumero < 0) return res.status(400).json({ error: "Informe o custo unitário do produto." });
       data.custoUnitario = custoNumero;
     }
     if (outrosCustos !== undefined) {
@@ -324,20 +324,20 @@ async function atualizarProduto(req, res) {
     });
     res.json(atualizado);
   } catch (error) {
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel atualizar o produto.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível atualizar o produto.") });
   }
 }
 
 async function deletarProduto(req, res) {
   const id = Number(req.params.id);
   const produto = await prisma.produto.findFirst({ where: { id, lojaId: lojaId(req) } });
-  if (!produto) return res.status(404).json({ error: "Produto nao encontrado." });
+  if (!produto) return res.status(404).json({ error: "Produto não encontrado." });
 
   try {
     await prisma.produto.delete({ where: { id } });
     res.json({ mensagem: "Produto removido com sucesso" });
   } catch (error) {
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel remover o produto.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível remover o produto.") });
   }
 }
 
@@ -347,7 +347,7 @@ async function atualizarEstoqueVariacao(req, res) {
   const estoqueNumero = Number(estoque);
 
   if (!Number.isInteger(estoqueNumero) || estoqueNumero < 0) {
-    return res.status(400).json({ error: "Informe um estoque valido." });
+    return res.status(400).json({ error: "Informe um estoque válido." });
   }
 
   try {
@@ -355,7 +355,7 @@ async function atualizarEstoqueVariacao(req, res) {
       const variacao = await tx.variacaoProduto.findFirst({
         where: { id, produto: { lojaId: lojaId(req) } },
       });
-      if (!variacao) throw new Error("Variacao nao encontrada.");
+      if (!variacao) throw new Error("Variação não encontrada.");
 
       const atualizada = await tx.variacaoProduto.update({
         where: { id },
@@ -380,7 +380,7 @@ async function atualizarEstoqueVariacao(req, res) {
 
     res.json(variacaoAtualizada);
   } catch (error) {
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel atualizar o estoque.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível atualizar o estoque.") });
   }
 }
 
@@ -389,13 +389,13 @@ async function deletarVariacao(req, res) {
   const variacao = await prisma.variacaoProduto.findFirst({
     where: { id, produto: { lojaId: lojaId(req) } },
   });
-  if (!variacao) return res.status(404).json({ error: "Variacao nao encontrada." });
+  if (!variacao) return res.status(404).json({ error: "Variação não encontrada." });
 
   try {
     await prisma.variacaoProduto.delete({ where: { id } });
-    res.json({ mensagem: "Variacao removida com sucesso" });
+    res.json({ mensagem: "Variação removida com sucesso" });
   } catch (error) {
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel remover a variacao.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível remover a variação.") });
   }
 }
 
@@ -405,9 +405,9 @@ async function adicionarVariacao(req, res) {
   const estoqueNumero = Number(estoque);
 
   const produto = await prisma.produto.findFirst({ where: { id: produtoId, lojaId: lojaId(req) } });
-  if (!produto) return res.status(404).json({ error: "Produto nao encontrado." });
+  if (!produto) return res.status(404).json({ error: "Produto não encontrado." });
   if (!String(numeracao || "").trim() || !Number.isInteger(estoqueNumero) || estoqueNumero < 0) {
-    return res.status(400).json({ error: "Informe numeracao e estoque validos." });
+    return res.status(400).json({ error: "Informe numeração e estoque válidos." });
   }
 
   try {
@@ -440,7 +440,7 @@ async function adicionarVariacao(req, res) {
     }, transacaoOperacionalOpcoes);
     res.status(201).json(variacao);
   } catch (error) {
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel adicionar a variacao.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível adicionar a variação.") });
   }
 }
 

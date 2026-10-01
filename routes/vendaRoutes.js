@@ -128,7 +128,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
         const cliente = await tx.cliente.findFirst({
           where: { id: clienteIdNumerico, lojaId: lojaId(req) },
         });
-        if (!cliente) throw new Error("Cliente nao encontrado nesta loja.");
+        if (!cliente) throw new Error("Cliente não encontrado nesta loja.");
 
         if (tipoEntrega === "entrega") {
           if (!enderecoFinal) {
@@ -161,7 +161,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
       for (const item of produtos) {
         const quantidade = numeroValido(item.quantidade);
         if (!Number.isInteger(quantidade) || quantidade <= 0) {
-          throw new Error("Quantidade invalida em um item da venda.");
+          throw new Error("Quantidade inválida em um item da venda.");
         }
 
         if (itemManual(item)) {
@@ -173,7 +173,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
 
           if (!nomeManual) throw new Error("Informe o nome do item fora de estoque.");
           if (precoUnitario <= 0) throw new Error(`Informe o valor de venda do item "${nomeManual}".`);
-          if (custoUnitario < 0 || outrosCustos < 0) throw new Error(`Informe custos validos para "${nomeManual}".`);
+          if (custoUnitario < 0 || outrosCustos < 0) throw new Error(`Informe custos válidos para "${nomeManual}".`);
 
           await tx.itemVenda.create({
             data: {
@@ -199,7 +199,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
           include: { produto: true },
         });
 
-        if (!variacao) throw new Error(`Variacao ${item.variacaoProdutoId} nao encontrada.`);
+        if (!variacao) throw new Error(`Variação ${item.variacaoProdutoId} não encontrada.`);
 
         await tx.itemVenda.create({
           data: {
@@ -263,7 +263,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente", "vende
     });
   } catch (error) {
     console.error("Erro ao registrar venda:", error);
-    return res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel registrar a venda. Tente novamente.") });
+    return res.status(400).json({ error: mensagemPublica(error, "Não foi possível registrar a venda. Tente novamente.") });
   }
 });
 
@@ -288,13 +288,13 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), asy
 
   try {
     const venda = await prisma.venda.findFirst({ where: escopoVenda(req, { id: vendaId }) });
-    if (!venda) return res.status(404).json({ error: "Venda nao encontrada." });
+    if (!venda) return res.status(404).json({ error: "Venda não encontrada." });
 
     if (clienteId) {
       const cliente = await prisma.cliente.findFirst({
         where: { id: Number(clienteId), lojaId: lojaId(req) },
       });
-      if (!cliente) return res.status(400).json({ error: "Cliente nao encontrado nesta loja." });
+      if (!cliente) return res.status(400).json({ error: "Cliente não encontrado nesta loja." });
     }
 
     const data = {};
@@ -328,7 +328,7 @@ router.delete("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), 
       include: { itens: true },
     });
 
-    if (!venda) return res.status(404).json({ error: "Venda nao encontrada." });
+    if (!venda) return res.status(404).json({ error: "Venda não encontrada." });
 
     await prisma.$transaction(async (tx) => {
       for (const item of venda.itens) {
@@ -361,7 +361,7 @@ router.delete("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), 
       await tx.venda.delete({ where: { id: venda.id } });
     }, transacaoOperacionalOpcoes);
 
-    res.json({ mensagem: "Venda excluida com sucesso!" });
+    res.json({ mensagem: "Venda excluída com sucesso!" });
   } catch (error) {
     console.error("Erro ao excluir venda:", error);
     res.status(500).json({ error: "Erro ao excluir venda." });
@@ -377,11 +377,11 @@ router.post("/troca", assinaturaAtivaRequired, requireRole("admin", "gerente", "
         where: escopoVenda(req, { id: Number(vendaId) }),
         include: { itens: true },
       });
-      if (!venda) throw new Error("Venda nao encontrada.");
+      if (!venda) throw new Error("Venda não encontrada.");
 
       const item = venda.itens.find((i) => i.id === Number(itemId));
-      if (!item) throw new Error("Item da venda nao encontrado.");
-      if (!item.variacaoProdutoId) throw new Error("Item fora de estoque nao pode ser trocado pelo controle de estoque.");
+      if (!item) throw new Error("Item da venda não encontrado.");
+      if (!item.variacaoProdutoId) throw new Error("Item fora de estoque não pode ser trocado pelo controle de estoque.");
 
       const variacaoNova = await tx.variacaoProduto.findFirst({
         where: {
@@ -390,13 +390,13 @@ router.post("/troca", assinaturaAtivaRequired, requireRole("admin", "gerente", "
         },
         include: { produto: true },
       });
-      if (!variacaoNova) throw new Error("Nova variacao nao encontrada.");
-      if (variacaoNova.estoque < item.quantidade) throw new Error("Estoque insuficiente para a nova variacao.");
+      if (!variacaoNova) throw new Error("Nova variação não encontrada.");
+      if (variacaoNova.estoque < item.quantidade) throw new Error("Estoque insuficiente para a nova variação.");
 
       const variacaoAnterior = await tx.variacaoProduto.findUnique({
         where: { id: item.variacaoProdutoId },
       });
-      if (!variacaoAnterior) throw new Error("Variacao original nao encontrada.");
+      if (!variacaoAnterior) throw new Error("Variação original não encontrada.");
 
       const variacaoAnteriorAtualizada = await tx.variacaoProduto.update({
         where: { id: item.variacaoProdutoId },
@@ -431,7 +431,7 @@ router.post("/troca", assinaturaAtivaRequired, requireRole("admin", "gerente", "
         },
         data: { estoque: { decrement: item.quantidade } },
       });
-      if (baixaNovaVariacao.count === 0) throw new Error("Estoque insuficiente para a nova variacao.");
+      if (baixaNovaVariacao.count === 0) throw new Error("Estoque insuficiente para a nova variação.");
       await registrarMovimentoEstoque(tx, {
         lojaId: lojaId(req),
         variacaoProdutoId: variacaoNova.id,
@@ -450,7 +450,7 @@ router.post("/troca", assinaturaAtivaRequired, requireRole("admin", "gerente", "
     res.json({ mensagem: "Troca realizada com sucesso!", venda: vendaVisivelParaMembro(req, vendaAtualizada) });
   } catch (error) {
     console.error("Erro ao realizar troca:", error);
-    res.status(400).json({ error: mensagemPublica(error, "Nao foi possivel concluir a troca. Tente novamente.") });
+    res.status(400).json({ error: mensagemPublica(error, "Não foi possível concluir a troca. Tente novamente.") });
   }
 });
 

@@ -13,7 +13,7 @@ router.post("/", assinaturaAtivaRequired, requireRole("admin", "gerente"), async
   try {
     const { titulo, descricao, valorMeta, tipo, periodo } = req.body;
     if (!titulo || valorMeta == null) {
-      return res.status(400).json({ error: "Campos obrigatorios faltando" });
+      return res.status(400).json({ error: "Campos obrigatórios faltando" });
     }
 
     const novaMeta = await prisma.meta.create({
@@ -51,7 +51,7 @@ router.get("/:id", async (req, res) => {
     const meta = await prisma.meta.findFirst({
       where: { id: Number(req.params.id), lojaId: lojaId(req) },
     });
-    if (!meta) return res.status(404).json({ error: "Meta nao encontrada" });
+    if (!meta) return res.status(404).json({ error: "Meta não encontrada" });
     res.json(meta);
   } catch (err) {
     res.status(500).json({ error: "Erro ao buscar meta" });
@@ -64,7 +64,7 @@ router.put("/:id", assinaturaAtivaRequired, requireRole("admin", "gerente"), asy
     const existente = await prisma.meta.findFirst({
       where: { id: Number(req.params.id), lojaId: lojaId(req) },
     });
-    if (!existente) return res.status(404).json({ error: "Meta nao encontrada" });
+    if (!existente) return res.status(404).json({ error: "Meta não encontrada" });
 
     const meta = await prisma.meta.update({
       where: { id: existente.id },
@@ -81,10 +81,10 @@ router.delete("/:id", assinaturaAtivaRequired, requireRole("admin"), async (req,
     const existente = await prisma.meta.findFirst({
       where: { id: Number(req.params.id), lojaId: lojaId(req) },
     });
-    if (!existente) return res.status(404).json({ error: "Meta nao encontrada" });
+    if (!existente) return res.status(404).json({ error: "Meta não encontrada" });
 
     await prisma.meta.delete({ where: { id: existente.id } });
-    res.json({ message: "Meta excluida com sucesso" });
+    res.json({ message: "Meta excluída com sucesso" });
   } catch (err) {
     res.status(500).json({ error: "Erro ao excluir meta" });
   }

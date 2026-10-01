@@ -96,12 +96,12 @@ router.post("/bootstrap-superadmin", async (req, res) => {
   try {
     const existentes = await prisma.usuario.count({ where: { superadmin: true } });
     if (existentes > 0) {
-      return res.status(409).json({ error: "Superadmin ja existe." });
+      return res.status(409).json({ error: "Superadmin já existe." });
     }
 
     const { nome = "Super Admin", email, senha } = req.body;
     if (!email || !senha || senha.length < 6) {
-      return res.status(400).json({ error: "Informe email e senha com ao menos 6 caracteres." });
+      return res.status(400).json({ error: "Informe e-mail e senha com ao menos 6 caracteres." });
     }
 
     const senhaHash = await bcrypt.hash(senha, 10);
@@ -140,12 +140,12 @@ router.post("/login", async (req, res) => {
     });
 
     if (!usuario || !usuario.ativo) {
-      return res.status(401).json({ error: "Email ou senha invalidos." });
+      return res.status(401).json({ error: "E-mail ou senha inválidos." });
     }
 
     const senhaOk = await bcrypt.compare(String(senha || ""), usuario.senhaHash);
     if (!senhaOk) {
-      return res.status(401).json({ error: "Email ou senha invalidos." });
+      return res.status(401).json({ error: "E-mail ou senha inválidos." });
     }
 
     const completo = await carregarUsuarioCompleto(usuario.id);
@@ -184,7 +184,7 @@ router.post("/cadastro", async (req, res) => {
 
     if (!nomeUsuario || !emailNormalizado || !senha || String(senha).length < 6 || !nomeLoja) {
       return res.status(400).json({
-        error: "Preencha nome, email, senha com ao menos 6 caracteres e nome da loja.",
+        error: "Preencha nome, e-mail, senha com ao menos 6 caracteres e nome da loja.",
       });
     }
 
@@ -243,7 +243,7 @@ router.post("/cadastro", async (req, res) => {
   } catch (error) {
     console.error("Erro ao cadastrar lojista:", error);
     if (error.code === "P2002") {
-      return res.status(409).json({ error: "Email ja cadastrado." });
+      return res.status(409).json({ error: "E-mail já cadastrado." });
     }
     res.status(500).json({ error: "Erro ao criar cadastro." });
   }
@@ -265,13 +265,13 @@ router.put("/minha-conta", authRequired, lojaRequired, async (req, res) => {
 
     if (usuario.nome !== undefined) {
       const nome = textoLimpo(usuario.nome);
-      if (!nome) return res.status(400).json({ error: "Nome do usuario e obrigatorio." });
+      if (!nome) return res.status(400).json({ error: "Nome do usuário é obrigatório." });
       usuarioData.nome = nome;
     }
 
     if (usuario.email !== undefined) {
       const email = emailLimpo(usuario.email);
-      if (!email) return res.status(400).json({ error: "Email do usuario e obrigatorio." });
+      if (!email) return res.status(400).json({ error: "E-mail do usuário é obrigatório." });
       usuarioData.email = email;
     }
 
@@ -301,7 +301,7 @@ router.put("/minha-conta", authRequired, lojaRequired, async (req, res) => {
 
       if (loja.nome !== undefined) {
         const nome = textoLimpo(loja.nome);
-        if (!nome) return res.status(400).json({ error: "Nome da loja e obrigatorio." });
+        if (!nome) return res.status(400).json({ error: "Nome da loja é obrigatório." });
         lojaData.nome = nome;
       }
 
@@ -328,7 +328,7 @@ router.put("/minha-conta", authRequired, lojaRequired, async (req, res) => {
   } catch (error) {
     console.error("Erro ao atualizar conta:", error);
     if (error.code === "P2002") {
-      return res.status(409).json({ error: "Email ja esta em uso." });
+      return res.status(409).json({ error: "E-mail já está em uso." });
     }
     res.status(500).json({ error: "Erro ao atualizar conta." });
   }
@@ -342,7 +342,7 @@ router.get("/convites/:token", async (req, res) => {
     });
 
     if (!convite || convite.status !== "pendente" || new Date(convite.expiraEm) < new Date()) {
-      return res.status(404).json({ error: "Convite invalido ou expirado." });
+      return res.status(404).json({ error: "Convite inválido ou expirado." });
     }
 
     res.json({
@@ -362,17 +362,17 @@ router.post("/aceitar-convite", async (req, res) => {
   try {
     const { token, nome, email, senha } = req.body;
     if (!token || !nome || !email || !senha || senha.length < 6) {
-      return res.status(400).json({ error: "Preencha nome, email e senha com ao menos 6 caracteres." });
+      return res.status(400).json({ error: "Preencha nome, e-mail e senha com ao menos 6 caracteres." });
     }
 
     const emailNormalizado = String(email).toLowerCase().trim();
     const convite = await prisma.conviteLoja.findUnique({ where: { token } });
     if (!convite || convite.status !== "pendente" || new Date(convite.expiraEm) < new Date()) {
-      return res.status(404).json({ error: "Convite invalido ou expirado." });
+      return res.status(404).json({ error: "Convite inválido ou expirado." });
     }
 
     if (convite.email && convite.email.toLowerCase() !== emailNormalizado) {
-      return res.status(400).json({ error: "Este convite foi emitido para outro email." });
+      return res.status(400).json({ error: "Este convite foi emitido para outro e-mail." });
     }
 
     const trialDias = Number(process.env.TRIAL_DIAS || 14);
@@ -433,7 +433,7 @@ router.post("/aceitar-convite", async (req, res) => {
   } catch (error) {
     console.error("Erro ao aceitar convite:", error);
     if (error.code === "P2002") {
-      return res.status(409).json({ error: "Email ou slug de loja ja cadastrado." });
+      return res.status(409).json({ error: "E-mail ou slug de loja já cadastrado." });
     }
     res.status(500).json({ error: "Erro ao aceitar convite." });
   }
