@@ -96,6 +96,32 @@ async function notificarNovoPedido(client, { lojaId, pedido, criadoPorId, criado
   });
 }
 
+async function notificarVendaPedidoConfirmada(client, { lojaId, usuarioId, pedidoId, venda }) {
+  if (!configuracaoPushDisponivel() || !usuarioId) return { enviados: 0, falhas: 0 };
+
+  const inscricoes = await client.inscricaoPush.findMany({
+    where: {
+      lojaId,
+      usuarioId,
+      ativo: true,
+    },
+  });
+
+  const cliente = venda.cliente?.nome || "Cliente não informado";
+  return enviarParaInscricoes(client, inscricoes, {
+    title: "Venda confirmada",
+    body: `O pedido #${pedidoId} de ${cliente} virou a venda #${venda.id} · ${formatarMoeda(venda.total)}`,
+    icon: "/lojia-icon.svg",
+    badge: "/lojia-icon.svg",
+    tag: `pedido-confirmado-${pedidoId}`,
+    url: "/?tela=historico",
+    tela: "historico",
+    pedidoId,
+    vendaId: venda.id,
+    badgeCount: 1,
+  });
+}
+
 async function enviarTesteParaUsuario(client, { lojaId, usuarioId }) {
   const inscricoes = await client.inscricaoPush.findMany({
     where: { lojaId, usuarioId, ativo: true },
@@ -103,7 +129,7 @@ async function enviarTesteParaUsuario(client, { lojaId, usuarioId }) {
 
   return enviarParaInscricoes(client, inscricoes, {
     title: "Notificações da Lojia ativadas",
-    body: "Tudo certo. Você receberá um aviso quando a equipe criar um novo pedido.",
+    body: "Tudo certo. Você receberá avisos sobre novos pedidos e vendas confirmadas.",
     icon: "/lojia-icon.svg",
     badge: "/lojia-icon.svg",
     tag: "teste-notificacoes",
@@ -115,5 +141,6 @@ async function enviarTesteParaUsuario(client, { lojaId, usuarioId }) {
 module.exports = {
   configuracaoPushDisponivel,
   notificarNovoPedido,
+  notificarVendaPedidoConfirmada,
   enviarTesteParaUsuario,
 };

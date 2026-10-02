@@ -1,6 +1,5 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
-const { requireRole } = require("../middlewares/auth");
 const {
   configuracaoPushDisponivel,
   enviarTesteParaUsuario,
@@ -96,7 +95,7 @@ router.delete("/inscricoes", async (req, res) => {
   }
 });
 
-router.post("/teste", requireRole("admin"), async (req, res) => {
+router.post("/teste", async (req, res) => {
   try {
     const resultado = await enviarTesteParaUsuario(prisma, {
       lojaId: req.loja.id,

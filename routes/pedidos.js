@@ -5,7 +5,10 @@ const { registrarVendaNoCaixa } = require("../services/caixaService");
 const { registrarFinanceiroVenda } = require("../services/financeiroService");
 const { registrarMovimentoEstoque } = require("../services/estoqueMovimentoService");
 const { mensagemPublica } = require("../services/errorResponse");
-const { notificarNovoPedido } = require("../services/notificacaoPushService");
+const {
+  notificarNovoPedido,
+  notificarVendaPedidoConfirmada,
+} = require("../services/notificacaoPushService");
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -596,7 +599,7 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
       return res.status(400).json({ error: "Informe a forma de pagamento." });
     }
 
-    const venda = await prisma.$transaction(async (tx) => {
+    const confirmacao = await prisma.$transaction(async (tx) => {
       const pedido = await tx.pedido.findFirst({
         where: { id: Number(req.params.id), lojaId: lojaId(req), ...escopoPedido(req) },
         include: {
@@ -682,8 +685,20 @@ router.post("/:id/confirmar", assinaturaAtivaRequired, requireRole("admin", "ger
 
       await tx.itemPedido.deleteMany({ where: { pedidoId: pedido.id } });
       await tx.pedido.delete({ where: { id: pedido.id } });
-      return novaVenda;
+      return {
+        venda: novaVenda,
+        pedidoId: pedido.id,
+        pedidoCriadoPorId: pedido.criadoPorId,
+      };
     }, transacaoOperacionalOpcoes);
+
+    const { venda, pedidoId, pedidoCriadoPorId } = confirmacao;
+    notificarVendaPedidoConfirmada(prisma, {
+      lojaId: lojaId(req),
+      usuarioId: pedidoCriadoPorId,
+      pedidoId,
+      venda,
+    }).catch((error) => console.error("Erro ao enviar notificação da venda confirmada:", error.message));
 
     res.json({ message: "Pedido convertido em venda com sucesso!", venda: vendaVisivelParaMembro(req, venda) });
   } catch (error) {
