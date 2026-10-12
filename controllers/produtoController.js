@@ -32,6 +32,38 @@ function urlAbsoluta(valor) {
   return /^https?:\/\//i.test(String(valor || ""));
 }
 
+function urlProxyImagem(valor) {
+  try {
+    const url = new URL(valor);
+    if (url.hostname !== "i.ibb.co") return null;
+    return `https://wsrv.nl/?url=${encodeURIComponent(valor)}&output=jpg`;
+  } catch {
+    return null;
+  }
+}
+
+async function buscarImagemRemota(imagemUrl) {
+  const urls = [urlProxyImagem(imagemUrl), imagemUrl].filter(Boolean);
+  let ultimoErro = null;
+
+  for (const url of urls) {
+    try {
+      const resposta = await fetch(url, {
+        signal: AbortSignal.timeout(15000),
+        headers: { "User-Agent": "Lojia/1.0" },
+      });
+      const contentType = resposta.headers.get("content-type") || "";
+
+      if (resposta.ok && contentType.startsWith("image/")) return resposta;
+      ultimoErro = new Error(`Resposta de imagem inválida (${resposta.status}).`);
+    } catch (error) {
+      ultimoErro = error;
+    }
+  }
+
+  throw ultimoErro || new Error("Imagem remota indisponível.");
+}
+
 async function validarFornecedorDaLoja(fornecedorId, loja) {
   if (fornecedorId === null || fornecedorId === undefined || fornecedorId === "") return null;
 
@@ -83,8 +115,7 @@ async function baixarImagemProduto(req, res) {
     if (!produto.imagemUrl) return res.status(404).json({ error: "Produto sem imagem." });
 
     if (urlAbsoluta(produto.imagemUrl)) {
-      const resposta = await fetch(produto.imagemUrl);
-      if (!resposta.ok) return res.status(502).json({ error: "Não foi possível baixar a imagem." });
+      const resposta = await buscarImagemRemota(produto.imagemUrl);
 
       const contentType = resposta.headers.get("content-type") || "image/jpeg";
       const buffer = Buffer.from(await resposta.arrayBuffer());
